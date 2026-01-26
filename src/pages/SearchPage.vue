@@ -68,7 +68,7 @@ export default {
       const kw = q.value.trim()
       if (!kw) { items.value = []; page.value = 1; hasNext.value = false; err.value = null; return }
       try {
-        const res = await api.searchVideos({ page: p, pageSize: 12, q: kw })
+        const res = await api.searchVideos({ page: p, pageSize: 12, q: kw, order: 'relevance' })
         if (p === 1) items.value = res.items
         else items.value = items.value.concat(res.items)
         page.value = res.page

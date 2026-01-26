@@ -2,6 +2,9 @@
   <div class="comments">
     <!-- composer moved to bottom -->
 
+    <div v-if="!commentsAllowed" class="info">作者已关闭评论</div>
+    <div v-else-if="hiddenByPrivacy" class="info">评论不可见（视频未发布或为私密）</div>
+
     <div class="header" v-if="total>0">共 {{ total }} 条评论</div>
     <div class="list">
       <div v-for="c in items" :key="c.id" class="item">
@@ -58,7 +61,7 @@
       </div>
     </div>
 
-    <div v-if="!loading && !err && items.length===0" class="empty">还没有评论，来当第一个吧～</div>
+    <div v-if="!loading && !err && items.length===0 && !hiddenByPrivacy && commentsAllowed" class="empty">还没有评论，来当第一个吧～</div>
 
     <div v-if="hasNext" class="more"><button class="btn" :disabled="loading" @click="loadMore">加载更多</button></div>
     <div v-if="loading" class="loading">加载中…</div>
@@ -86,6 +89,7 @@ const hasNext = ref(false)
 const loading = ref(false)
 const err = ref(null)
 const total = ref(0)
+const hiddenByPrivacy = ref(false)
 
 const busy = ref(false)
 
@@ -115,8 +119,9 @@ async function fetchList(p = 1) {
     page.value = Number(res?.page || p || 1)
     hasNext.value = !!(res?.has_next ?? res?.hasNext)
     total.value = Number(res?.total || (items.value?.length || 0))
+    hiddenByPrivacy.value = false
   } catch (e) {
-    try { if (Number(e?.status) === 404) { items.value = []; total.value = 0; hasNext.value = false; err.value = null; return } } catch (_) { /* no-op */ }
+    try { if (Number(e?.status) === 404) { items.value = []; total.value = 0; hasNext.value = false; err.value = null; hiddenByPrivacy.value = true; return } } catch (_) { /* no-op */ }
     err.value = e
   }
   finally { loading.value = false }
@@ -224,6 +229,7 @@ defineExpose({ prepend, reload })
 
 <style scoped>
 .comments{margin-top:8px;color:var(--text);display:flex;flex-direction:column;gap:12px}
+.info{background:var(--bg);border:1px solid var(--border);border-radius:12px;color:var(--muted);padding:8px 10px}
 .write{display:flex;gap:10px;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px}
 .write input{flex:1;height:40px;padding:0 12px;border:1px solid var(--btn-border);border-radius:10px;background:var(--bg-elev);color:var(--text)}
 .write.small{margin-top:8px;background:transparent;border:none;padding:0}

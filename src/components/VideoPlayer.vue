@@ -1,5 +1,5 @@
 <template>
-  <div class="vp" ref="wrap" @mousemove="onMouseMove" @wheel.prevent="onWheel" @click="onToggleClick">
+  <div class="vp" ref="wrap" @mousemove="onMouseMove" @wheel.prevent="onWheel" @click="onToggleClick" @dblclick.stop.prevent="onDblClick">
     <video ref="video" class="vd" :poster="poster || undefined" :muted="mutedState" playsinline preload="metadata"
       @timeupdate="onTime" @durationchange="onDur" @progress="onProgress" @ended="onEnded" @play="onPlay"
       @pause="onPause" @error="onError" @waiting="onWaiting" @canplay="onCanPlay"></video>
@@ -342,6 +342,8 @@ function onToggleClick(e) {
   if (mutedState.value) { mutedState.value = false; applyVolume() }
   togglePlay()
 }
+
+function onDblClick() { togglePlay() }
 
 function applyVolume() {
   try {
