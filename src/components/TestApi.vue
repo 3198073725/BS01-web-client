@@ -96,7 +96,9 @@
 <script setup>
 import { ref } from 'vue'
 import { api } from '../api'
+import { useUiStore } from '@/stores/ui'
 
+const ui = useUiStore()
 const base = ref(api.getBase())
 function saveBase() {
   api.setBase(base.value)
@@ -123,7 +125,7 @@ async function register() {
   clearErr()
   try {
     await api.register(reg.value)
-    alert('注册成功，请使用登录表单登录。')
+    try { ui.showDialog('注册成功，请使用登录表单登录。', 'success') } catch (_) { /* no-op */ }
   } catch (e) { err.value = e }
 }
 
@@ -144,12 +146,12 @@ async function loadMe() {
 
 async function sendVerifyEmail() {
   clearErr()
-  try { await api.sendVerifyEmail(); alert('发送成功（请查看控制台或邮箱）') } catch (e) { err.value = e }
+  try { await api.sendVerifyEmail(); try { ui.showDialog('发送成功（请查看控制台或邮箱）', 'success') } catch (_) { /* no-op */ } } catch (e) { err.value = e }
 }
 
 async function passwordReset() {
   clearErr()
-  try { await api.passwordResetRequest(resetEmail.value); alert('发送成功（总返回 204）') } catch (e) { err.value = e }
+  try { await api.passwordResetRequest(resetEmail.value); try { ui.showDialog('发送成功（总返回 204）', 'success') } catch (_) { /* no-op */ } } catch (e) { err.value = e }
 }
 
 function onFile(ev) { file.value = ev.target.files && ev.target.files[0] }
@@ -169,7 +171,7 @@ async function doFollow() {
   try {
     const u = await api.userByUsername(followUser.value)
     await api.follow(u.id)
-    alert('已关注')
+    try { ui.showDialog('已关注', 'success') } catch (_) { /* no-op */ }
   } catch (e) { err.value = e }
 }
 
@@ -178,7 +180,7 @@ async function doUnfollow() {
   try {
     const u = await api.userByUsername(followUser.value)
     await api.unfollow(u.id)
-    alert('已取关')
+    try { ui.showDialog('已取关', 'success') } catch (_) { /* no-op */ }
   } catch (e) { err.value = e }
 }
 
