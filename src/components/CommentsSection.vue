@@ -18,12 +18,12 @@
             </div>
             <div class="bubble" @click="activateReply(c)">{{ c.content }}</div>
             <div class="actions">
-              <button class="link" @click="activateReply(c)">回复</button>
+              <button v-if="commentsAllowed" class="link" @click="activateReply(c)">回复</button>
               <button v-if="c.replies_count>0 && !c._showReplies" class="link" @click="openReplies(c)">展开 {{ c.replies_count }} 条回复</button>
               <button v-if="c._showReplies" class="link" @click="collapseReplies(c)">收起回复</button>
             </div>
             <div v-if="c._showReplies" class="replies">
-              <div v-if="c._replying" class="write small">
+              <div v-if="commentsAllowed && c._replying" class="write small">
                 <input v-model.trim="c._replyText" :placeholder="'回复 ' + userName(c.user)" @keydown.enter.exact.prevent="submitReplyTo(c, c)" />
                 <button class="btn" :disabled="busy || !c._replyText || !user" @click="submitReplyTo(c, c)">回复</button>
               </div>
@@ -42,9 +42,9 @@
                     </div>
                     <div class="bubble light">{{ r.content }}</div>
                     <div class="actions">
-                      <button class="link" @click="activateReplyTo(r, c)">回复</button>
+                      <button v-if="commentsAllowed" class="link" @click="activateReplyTo(r, c)">回复</button>
                     </div>
-                    <div v-if="r._replying" class="write small">
+                    <div v-if="commentsAllowed && r._replying" class="write small">
                       <input v-model.trim="r._replyText" :placeholder="'回复 ' + replyToName(r, c)" @keydown.enter.exact.prevent="submitReplyTo(r, c)" />
                       <button class="btn" :disabled="busy || !r._replyText || !user" @click="submitReplyTo(r, c)">回复</button>
                     </div>
@@ -69,10 +69,12 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import { api } from '@/api'
 
 const props = defineProps({
   videoId: { type: [String, Number], required: true },
+  commentsAllowed: { type: Boolean, default: true },
 })
 
 const auth = useAuthStore()
@@ -137,6 +139,7 @@ async function remove(c, parent = null) {
 }
 
 function activateReply(c) {
+  if (!props.commentsAllowed) return
   c._showReplies = true
   c._replying = true
   if (!Array.isArray(c._replies) || c._replies.length === 0) openReplies(c)
@@ -149,6 +152,7 @@ function collapseReplies(c) {
 
 function activateReplyTo(r, root) {
   try {
+    if (!props.commentsAllowed) return
     root._showReplies = true
     r._replying = true
   } catch (_) { /* no-op */ }
@@ -172,8 +176,11 @@ async function loadReplies(c, p = 1) {
 
 function loadMoreReplies(c) { if (c._repliesHasNext) loadReplies(c, (c._repliesPage || 1) + 1) }
 
+const ui = useUiStore()
+
 async function submitReplyTo(parent, root) {
-  if (!user.value) { try { alert('请先登录'); } catch (e) { void e } return }
+  if (!user.value) { try { ui.showDialog('请先登录', 'warn') } catch (e) { void e } return }
+  if (!props.commentsAllowed) { try { ui.showDialog('作者已关闭评论', 'warn') } catch (e) { void e } return }
   const content = String(parent._replyText || '').trim(); if (!content) return
   if (busy.value) return; busy.value = true
   try {
@@ -182,7 +189,15 @@ async function submitReplyTo(parent, root) {
     root._replies = [r, ...(root._replies || [])]
     parent._replyText = ''
     parent._replying = false
-  } catch (e) { /* no-op */ }
+  } catch (e) {
+    try {
+      const st = Number((e && e.status) || 0)
+      const msg = (e && (e.detail || e.message)) || ''
+      if (st === 401 || /未登录/.test(msg)) { ui.showDialog('请先登录', 'warn') }
+      else if (st === 403 && (/评论已关闭/.test(msg) || /已关闭/.test(msg))) { ui.showDialog('作者已关闭评论', 'warn'); try { root._replying = false; parent._replying = false } catch (_) { /* no-op */ } }
+      else { ui.showDialog(msg || '回复失败', 'error') }
+    } catch (_) { /* no-op */ }
+  }
   finally { busy.value = false }
 }
 

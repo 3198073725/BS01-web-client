@@ -27,12 +27,7 @@
         ⭐
         <span class="cnt">{{ favoriteCount }}</span>
       </button>
-      <button class="icon bell" @click.stop="toggleNotif" title="通知">
-        🔔
-        <span v-if="unread>0" class="badge">{{ unread>99? '99+': unread }}</span>
-      </button>
       <button class="icon" @click.stop="share" title="分享">🔗</button>
-      <NotificationsPanel v-if="showNotif" @close="showNotif=false" @updated="refreshUnread" />
     </div>
   </div>
 </template>
@@ -41,8 +36,8 @@
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import { api } from '@/api'
-import NotificationsPanel from './NotificationsPanel.vue'
 
 const props = defineProps({
   videoId: { type: [String, Number], required: true },
@@ -60,6 +55,7 @@ const props = defineProps({
 const emit = defineEmits(['update-like', 'update-favorite', 'share', 'open-comments'])
 
 const auth = useAuthStore()
+const ui = useUiStore()
 const router = useRouter()
 const user = computed(() => auth.user)
 
@@ -71,8 +67,7 @@ const following = ref(false)
 const busyFollow = ref(false)
 const busyLike = ref(false)
 const busyFav = ref(false)
-const showNotif = ref(false)
-const unread = ref(0)
+
 
 // 若外部未提供 author，自动从视频详情补齐
 const authorLoaded = ref(null)
@@ -87,18 +82,6 @@ async function ensureAuthor() {
     if (typeof d?.favorite_count === 'number') favoriteCount.value = d.favorite_count
   } catch (_) { /* no-op */ }
 }
-
-function toggleNotif() {
-  showNotif.value = !showNotif.value
-  if (showNotif.value) refreshUnread()
-}
-async function refreshUnread() {
-  try {
-    const d = await api.notificationsUnreadCount()
-    unread.value = Number(d?.unread || 0)
-  } catch (_) { /* no-op */ }
-}
-onMounted(() => { refreshUnread(); try { window.addEventListener('auth:sync', refreshUnread) } catch (_) { /* no-op */ } })
 
 // 初始化关注状态：用于决定是否显示“关注”按钮
 async function ensureFollowStatus() {
@@ -160,7 +143,7 @@ function since(date) {
 const timeText = computed(() => props.publishedAt ? since(props.publishedAt) : '')
 
 async function toggleLike() {
-  if (!user.value) { try { alert('请先登录'); } catch (e) { void e } return }
+  if (!user.value) { try { ui.showDialog('请先登录', 'warn') } catch (e) { void e } return }
   if (busyLike.value) return; busyLike.value = true
   try {
     const res = await api.requestLikeToggle?.(props.videoId)
@@ -171,7 +154,7 @@ async function toggleLike() {
   finally { busyLike.value = false }
 }
 async function toggleFavorite() {
-  if (!user.value) { try { alert('请先登录'); } catch (e) { void e } return }
+  if (!user.value) { try { ui.showDialog('请先登录', 'warn') } catch (e) { void e } return }
   if (busyFav.value) return; busyFav.value = true
   try {
     const res = await api.requestFavoriteToggle?.(props.videoId)
@@ -182,7 +165,7 @@ async function toggleFavorite() {
   finally { busyFav.value = false }
 }
 async function toggleFollow() {
-  if (!user.value) { try { alert('请先登录'); } catch (e) { void e } return }
+  if (!user.value) { try { ui.showDialog('请先登录', 'warn') } catch (e) { void e } return }
   if (busyFollow.value) return; busyFollow.value = true
   try {
     const aid = curAuthor.value && curAuthor.value.id
@@ -211,7 +194,7 @@ async function share() {
       if (origin && props.videoId) url = `${origin}/video/${props.videoId}`
     } catch (_) { /* no-op */ }
     if (navigator.share) { await navigator.share({ title: props.title || '分享视频', url }) }
-    else { await navigator.clipboard.writeText(url); alert('链接已复制') }
+    else { await navigator.clipboard.writeText(url); ui.showDialog('链接已复制', 'success') }
     try { emit('share', { videoId: props.videoId }) } catch (_) { /* no-op */ }
   } catch (_) { /* no-op */ }
 }

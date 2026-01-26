@@ -1,10 +1,12 @@
 import { ref, watchEffect, onMounted, onBeforeUnmount, onBeforeUpdate, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { api } from '../api'
+import { useUiStore } from '@/stores/ui'
 import { buildAvatarUrl, initialFromUser } from '../utils/user'
 import { loadTheme, saveTheme, applyTheme, toggleThemeValue } from '../utils/theme'
 
 export function useHomePage() {
+  const ui = useUiStore()
   const kw = ref('')
   const placeholder = '搜索你感兴趣的内容'
   const items = ref([])
@@ -110,7 +112,7 @@ export function useHomePage() {
 
   function doSearch() {
     const q = String(kw.value || '').trim()
-    if (!q) { alert('请输入关键词'); return }
+    if (!q) { ui.showDialog('请输入关键词', 'warn'); return }
     addHistoryTerm(q)
     showHistory.value = false
     try { router.push({ name: 'search', query: { q } }) } catch (_) { /* no-op */ }
@@ -187,12 +189,17 @@ export function useHomePage() {
     if (i > max) return max
     return i
   }
-  function goTo(i) {
+  function goTo(i, opts = {}) {
+    const push = !!(opts && opts.push)
     const el = feedRef.value
     if (!el) return
     const target = clamp(i)
     currentIndex.value = target
-    try { router.replace({ query: { ...route.query, i: String(target) } }).catch(() => {}) } catch (_) { /* no-op */ }
+    try {
+      const nav = { query: { ...route.query, i: String(target) } }
+      const p = push ? router.push(nav) : router.replace(nav)
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch (_) { /* no-op */ }
     isAnimating.value = true
     el.scrollTo({ top: target * stride(), behavior: 'smooth' })
     if (animTimer) window.clearTimeout(animTimer)

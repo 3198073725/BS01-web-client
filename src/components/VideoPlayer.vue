@@ -1,5 +1,5 @@
 <template>
-  <div class="vp" ref="wrap" @mousemove="onMouseMove" @wheel.prevent="onWheel" @dblclick="toggleFull" @click="onToggleClick">
+  <div class="vp" ref="wrap" @mousemove="onMouseMove" @wheel.prevent="onWheel" @click="onToggleClick">
     <video ref="video" class="vd" :poster="poster || undefined" :muted="mutedState" playsinline preload="metadata"
       @timeupdate="onTime" @durationchange="onDur" @progress="onProgress" @ended="onEnded" @play="onPlay"
       @pause="onPause" @error="onError" @waiting="onWaiting" @canplay="onCanPlay"></video>
@@ -30,11 +30,11 @@
           <button class="close" @click.stop="closeCommentsPanel" title="关闭">×</button>
         </div>
         <div class="c-body">
-          <CommentsSection ref="commentsRef" v-if="videoId" :video-id="videoId" />
+          <CommentsSection ref="commentsRef" v-if="videoId" :video-id="videoId" :comments-allowed="allowed" />
         </div>
         <div class="c-foot">
-          <input ref="drawerComposer" v-model.trim="newComment" :placeholder="user ? '发表你的评论…' : '登录后发表评论'" @keydown.enter.exact.prevent="submitDrawerComment" />
-          <button class="btn send" :disabled="submitBusy || !newComment || !user" @click="submitDrawerComment">发表评论</button>
+          <input ref="drawerComposer" v-model.trim="newComment" :placeholder="user ? (allowed ? '发表你的评论…' : '作者已关闭评论') : '登录后发表评论'" @keydown.enter.exact.prevent="submitDrawerComment" />
+          <button class="btn send" :disabled="submitBusy || !newComment || !user || !allowed" @click="submitDrawerComment">发表评论</button>
         </div>
       </div>
     </transition>
@@ -85,7 +85,7 @@
           <option :value="2">2x</option>
         </select>
         <button class="btn" @click.stop="enterPiP">PiP</button>
-        <button class="btn" @click.stop="toggleFull">{{ isFull ? '⤢' : '⤡' }}</button>
+        <button class="btn" :class="{ on: autonext }" @click.stop="toggleAutoNext">{{ autonext ? '连播:开' : '连播:关' }}</button>
       </div>
     </div>
     <!-- 底部常驻迷你进度条（不受 HUD 显隐影响） -->
@@ -99,6 +99,7 @@ import PlayerOverlay from './PlayerOverlay.vue'
 import CommentsSection from './CommentsSection.vue'
 import { api } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 
 const props = defineProps({
   src: { type: String, default: '' },
@@ -117,6 +118,7 @@ const props = defineProps({
   metaFavorites: { type: Number, default: 0 },
   metaLiked: { type: Boolean, default: false },
   metaFavorited: { type: Boolean, default: false },
+  commentsAllowed: { type: Boolean, default: true },
 })
 const emit = defineEmits(['request-next', 'request-prev', 'error', 'update-like', 'update-favorite', 'share'])
 
@@ -128,7 +130,12 @@ const drawerComposer = ref(null)
 const newComment = ref('')
 const submitBusy = ref(false)
 const auth = useAuthStore()
+const ui = useUiStore()
 const user = computed(() => auth.user)
+
+// 本地允许评论标记（与父组件 props 同步），用于在 403 后本地禁用
+const allowed = ref(!!props.commentsAllowed)
+watch(() => props.commentsAllowed, (nv) => { allowed.value = !!nv })
 
 const isPlaying = ref(false)
 const duration = ref(0)
@@ -274,7 +281,17 @@ function onProgress() {
 }
 function onPlay() { isPlaying.value = true; scheduleHide(); startRecord() }
 function onPause() { isPlaying.value = false; controlsVisible.value = true; clearHide(); stopRecord(true) }
-function onEnded() { isPlaying.value = false; stopRecord(true) }
+function onEnded() {
+  isPlaying.value = false;
+  stopRecord(true);
+  if (autonext.value) {
+    emit('request-next', { auto: true })
+  } else {
+    try { if (video.value) video.value.currentTime = 0 } catch (_) { /* no-op */ }
+    current.value = 0
+    controlsVisible.value = true
+  }
+}
 async function onError() {
   emit('error'); isPlaying.value = false
   try {
@@ -308,7 +325,17 @@ function play() {
   } catch (_) { return Promise.resolve() }
 }
 function pause() { try { video.value.pause() } catch (_) { void 0 } }
-async function togglePlay() { if (isPlaying.value) pause(); else { try { await play() } catch (_) { /* no-op */ } } }
+async function togglePlay() {
+  if (isPlaying.value) { pause() }
+  else {
+    try {
+      const d = Number(duration.value || 0)
+      const t = Number((video.value && video.value.currentTime) || current.value || 0)
+      if (d > 0 && (t >= d - 0.2)) { try { video.value.currentTime = 0 } catch (_) { /* no-op */ } }
+      await play()
+    } catch (_) { /* no-op */ }
+  }
+}
 function onToggleClick(e) {
   if (e.target.closest('.hud')) return
   // 首次交互时若静音，先取消静音并应用音量
@@ -379,13 +406,9 @@ function onWheel(e) {
   else if (wheelAcc < -thr) { wheelAcc = 0; emit('request-prev') }
 }
 
-const isFull = ref(false)
-function toggleFull() {
-  const el = wrap.value
-  if (!document.fullscreenElement) { try { el.requestFullscreen && el.requestFullscreen() } catch (_) { void 0 } }
-  else { try { document.exitFullscreen && document.exitFullscreen() } catch (_) { void 0 } }
-}
-function onFullChange() { isFull.value = !!document.fullscreenElement }
+// 连续播放开关
+const autonext = ref(false)
+function toggleAutoNext() { autonext.value = !autonext.value; try { localStorage.setItem('vp_autonext', autonext.value ? '1' : '0') } catch (_) { /* no-op */ } }
 
 function onKey(e) {
   // 仅当前激活的播放器响应键盘事件，避免多个实例同时处理
@@ -398,20 +421,27 @@ function onKey(e) {
   else if (e.code === 'KeyM') { e.preventDefault(); toggleMute() }
   else if (e.code === 'ArrowUp') { e.preventDefault(); volume.value = Math.min(1, volume.value + 0.05); if (volume.value>0) mutedState.value=false; applyVolume() }
   else if (e.code === 'ArrowDown') { e.preventDefault(); volume.value = Math.max(0, volume.value - 0.05); if (volume.value===0) mutedState.value=true; applyVolume() }
-  else if (e.code === 'KeyF') { e.preventDefault(); toggleFull() }
   else if (e.code === 'PageDown') { e.preventDefault(); emit('request-next') }
   else if (e.code === 'PageUp') { e.preventDefault(); emit('request-prev') }
 }
 
 async function submitDrawerComment() {
-  if (!user.value) { try { alert('请先登录'); } catch (e) { void e } return }
+  if (!user.value) { try { ui.showDialog('请先登录', 'warn') } catch (e) { void e } return }
+  if (!allowed.value) { try { ui.showDialog('作者已关闭评论', 'warn') } catch (e) { void e } return }
   const content = String(newComment.value || '').trim(); if (!content) return
   if (submitBusy.value) return; submitBusy.value = true
   try {
     const c = await api.commentCreate({ videoId: String(props.videoId), content })
     try { commentsRef.value && commentsRef.value.prepend && commentsRef.value.prepend(c) } catch (_) { /* no-op */ }
     newComment.value = ''
-  } catch (_) { /* no-op */ }
+  } catch (e) {
+    try {
+      const st = Number((e && e.status) || 0)
+      if (st === 401) { ui.showDialog('请先登录', 'warn') }
+      else if (st === 403) { ui.showDialog('作者已关闭评论', 'warn'); allowed.value = false }
+      else { ui.showDialog(((e && (e.detail || e.message)) || '发表评论失败'), 'error') }
+    } catch (_) { /* no-op */ }
+  }
   finally { submitBusy.value = false }
 }
 
@@ -598,7 +628,13 @@ async function loadThumbVtt(url) {
     if (!url) { thumbCues.value = []; return }
     const res = await fetch(url)
     const txt = await res.text()
-    thumbCues.value = parseVtt(txt)
+    const cues = parseVtt(txt) || []
+    // 以 VTT 文件 URL 为基址解析相对路径，确保不同 Host 下也能正确加载
+    try {
+      const base = new URL(url, window.location.href)
+      cues.forEach(c => { try { if (c && c.src) c.src = new URL(c.src, base.href).href } catch (_) { /* no-op */ } })
+    } catch (_) { /* no-op */ }
+    thumbCues.value = cues
   } catch (_) { thumbCues.value = [] }
 }
 watch(() => props.thumbVtt, (nv) => { if (nv) loadThumbVtt(nv); else thumbCues.value = [] }, { immediate: true })
@@ -645,11 +681,11 @@ onMounted(async () => {
   try { window.addEventListener('app:navigate-start', onNavStart) } catch (_) { /* no-op */ }
   try { window.addEventListener('app:navigate-end', onNavEnd) } catch (_) { /* no-op */ }
   document.addEventListener('visibilitychange', onVis)
-  document.addEventListener('fullscreenchange', onFullChange)
   // 恢复音量/静音设置
   try {
     const v = parseFloat(localStorage.getItem('vp_vol') || '0.6'); if (!Number.isNaN(v)) volume.value = Math.min(1, Math.max(0, v))
     const m = localStorage.getItem('vp_muted'); if (m === '0' || m === '1') mutedState.value = (m === '1')
+    const an = localStorage.getItem('vp_autonext'); if (an === '1') autonext.value = true
   } catch (_) { void 0 }
   addPreconnect(props.src); addPreconnect(props.nextSrc)
   await setSource(props.src)
@@ -665,7 +701,6 @@ onBeforeUnmount(() => {
   try { window.removeEventListener('app:navigate-start', onNavStart) } catch (_) { /* no-op */ }
   try { window.removeEventListener('app:navigate-end', onNavEnd) } catch (_) { /* no-op */ }
   document.removeEventListener('visibilitychange', onVis)
-  document.removeEventListener('fullscreenchange', onFullChange)
   clearHide()
   cleanupHls()
   stopRecord(true)
@@ -693,6 +728,7 @@ onBeforeUnmount(() => {
 .thumbbox .tt{margin-top:4px;color:#fff;font-size:12px;text-align:center;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:4px}
 .right{display:flex;align-items:center;gap:8px}
 .btn{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer}
+.btn.on{background:var(--accent);color:#000}
 .btn.small{padding:4px 8px;font-size:12px}
 .range{width:80px}
 .sel{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:6px 8px}

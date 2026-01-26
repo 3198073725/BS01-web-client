@@ -11,7 +11,7 @@
       <div class="empty">{{ emptyText || '暂无内容' }}</div>
     </template>
     <template v-else>
-      <div v-for="(it, idx) in items" :key="it.id || idx" class="card" :class="{ selectable, selected: isSelected(it) }" @click="onCardClick(it)">
+      <div v-for="(it, idx) in items" :key="it.id || idx" class="card" :class="{ selectable, selected: selectable && isSelected(it) }" @click="onCardClick(it)">
         <div class="thumb">
           <img v-if="it.cover" :src="it.cover" alt="thumb" />
           <div v-else class="ph" />
@@ -41,13 +41,16 @@ export default {
     selectable: { type: Boolean, default: false },
     selectedIds: { type: Array, default: () => [] },
   },
-  emits: ['toggle'],
+  emits: ['toggle','open'],
   methods: {
     format(n) {
       const v = Number(n || 0)
       if (v >= 1_000_000) return (v/1_000_000).toFixed(1).replace(/\.0$/,'')+'m'
       if (v >= 1_000) return (v/1_000).toFixed(1).replace(/\.0$/,'')+'k'
       return String(v)
+    },
+    getId(it) {
+      return String((it && (it.id || it.video_id)) || '')
     },
     isSelected(it) {
       const id = it && (it.id || it.video_id)
@@ -60,6 +63,10 @@ export default {
     },
     onCardClick(it) {
       if (this.selectable) { this.toggle(it) }
+      else {
+        const id = this.getId(it)
+        if (id) this.$emit('open', id)
+      }
     }
   }
 }

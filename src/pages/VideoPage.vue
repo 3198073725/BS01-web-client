@@ -21,6 +21,7 @@
           :meta-favorites="detail.favorite_count || 0"
           :meta-liked="!!detail.liked"
           :meta-favorited="!!detail.favorited"
+          :comments-allowed="commentsAllowed"
           @request-next="goNext"
           @request-prev="goPrev"
           @error="onPlayerError"
@@ -32,7 +33,7 @@
         <span>播放：{{ currentViews }}</span>
       </div>
       <div id="comments" style="margin-top:16px">
-        <CommentsSection :video-id="vid" />
+        <CommentsSection :video-id="vid" :comments-allowed="commentsAllowed" />
       </div>
     </div>
   </div>
@@ -68,6 +69,12 @@ const currentSrc = computed(() => srcById.value[vid.value] || detail.value.video
 const currentPoster = computed(() => (current.value && current.value.cover) || detail.value.thumbnail_url || '')
 const currentTitle = computed(() => (current.value && current.value.title) || detail.value.title || '')
 const currentViews = computed(() => (current.value && current.value.views) || detail.value.view_count || 0)
+const commentsAllowed = computed(() => {
+  try {
+    const d = detail.value || {}
+    return !(d && d.allow_comments === false)
+  } catch (_) { return true }
+})
 
 const nextItem = computed(() => items.value[curIndex.value + 1] || null)
 const prevItem = computed(() => items.value[curIndex.value - 1] || null)

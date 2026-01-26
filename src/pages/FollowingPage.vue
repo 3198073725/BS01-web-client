@@ -18,8 +18,8 @@
                      :meta-favorites="item.favorites || 0"
                      :meta-liked="item.liked || false"
                      :meta-favorited="item.favorited || false"
-                     @request-next="goTo(currentIndex + 1)"
-                     @request-prev="goTo(currentIndex - 1)"
+                     @request-next="onRequestNext"
+                     @request-prev="onRequestPrev"
         />
         <div v-else class="placeholder"><div class="box" /></div>
       </div>
@@ -31,6 +31,7 @@
 
 <script setup>
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 
@@ -42,6 +43,8 @@ const needLogin = ref(false)
 const feedRef = ref(null)
 const itemRefs = ref([])
 const currentIndex = ref(0)
+const router = useRouter()
+const route = useRoute()
 let aborted = false
 let io
 
@@ -50,9 +53,15 @@ onBeforeUnmount(() => { aborted = true; itemRefs.value = []; if (io) { try { io.
 
 function stride() { const el = feedRef.value; return el ? el.clientHeight : 0 }
 function clamp(i) { const max = Math.max(0, (itemRefs.value.length||1)-1); return Math.max(0, Math.min(max, i)) }
-function goTo(i) {
+function goTo(i, opts = {}) {
   const el = feedRef.value; if (!el) return
   const t = clamp(i); currentIndex.value = t
+  try {
+    const nav = { query: { ...route.query, i: String(t) } }
+    const push = !!(opts && opts.push)
+    const p = push ? router.push(nav) : router.replace(nav)
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+  } catch (_) { /* no-op */ }
   el.scrollTo({ top: t * Math.max(1, stride()), behavior: 'smooth' })
   updatePreload(t)
   maybeLoadMore(t)
@@ -125,8 +134,19 @@ function maybeLoadMore(idx){ if(idx>=items.value.length-2 && hasNext.value && !l
 const curPage = ref(1)
 const hasNext = ref(true)
 
+function onRequestNext(payload) {
+  try {
+    const auto = !!(payload && payload.auto)
+    goTo(currentIndex.value + 1, { push: auto })
+  } catch (_) { /* no-op */ }
+}
+function onRequestPrev() {
+  try { goTo(currentIndex.value - 1) } catch (_) { /* no-op */ }
+}
+
 onMounted(() => {
-  load(1).then(()=> nextTick(()=> goTo(0)))
+  const initIdx = Number(route.query.i || '0')
+  load(1).then(()=> nextTick(()=> goTo(isNaN(initIdx) ? 0 : initIdx)))
 })
 </script>
 

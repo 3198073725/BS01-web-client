@@ -83,8 +83,8 @@
                            :meta-favorites="item.favorites || 0"
                            :meta-liked="item.liked || false"
                            :meta-favorited="item.favorited || false"
-                           @request-next="goTo(currentIndex + 1)"
-                           @request-prev="goTo(currentIndex - 1)"
+                           @request-next="onRequestNext"
+                           @request-prev="onRequestPrev"
                            @update-like="onUpdateLike"
                            @update-favorite="onUpdateFavorite"
               />
@@ -179,6 +179,17 @@ function onUpdateFavorite({ videoId, favorited, favoriteCount }) {
       items.value[i] = next
     }
   } catch (_) { /* no-op */ }
+}
+
+// 连播自动切换：自动切换使用 push 入栈，手动切换使用 replace
+function onRequestNext(payload) {
+  try {
+    const auto = !!(payload && payload.auto)
+    goTo(currentIndex.value + 1, { push: auto })
+  } catch (_) { /* no-op */ }
+}
+function onRequestPrev() {
+  try { goTo(currentIndex.value - 1) } catch (_) { /* no-op */ }
 }
 
 // follow dialog

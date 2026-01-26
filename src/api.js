@@ -293,14 +293,17 @@ export const api = {
   },
   async videoDetail(id) {
     if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少视频ID' })
-    // Public detail: backend allows anonymous; using auth: false avoids 401 during HLS fallback
-    return request(`/api/videos/${encodeURIComponent(id)}/`, { auth: false })
+    // Use auth=true so owners can access private videos; anonymous requests still work when no token
+    return request(`/api/videos/${encodeURIComponent(id)}/`, { auth: true })
   },
   async videoUpdate(id, partial = {}) {
     if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少视频ID' })
     const body = {}
     if (typeof partial.title === 'string') body.title = partial.title
     if (typeof partial.description === 'string') body.description = partial.description
+    if (Object.prototype.hasOwnProperty.call(partial, 'allow_comments')) body.allow_comments = !!partial.allow_comments
+    if (Object.prototype.hasOwnProperty.call(partial, 'allow_download')) body.allow_download = !!partial.allow_download
+    if (typeof partial.visibility === 'string' && ['public','unlisted','private'].includes(partial.visibility)) body.visibility = partial.visibility
     return request(`/api/videos/${encodeURIComponent(id)}/`, { method: 'PATCH', body, auth: true })
   },
   async userDetail(id) {
@@ -384,6 +387,14 @@ export const api = {
   async videosBulkDelete(videoIds = []) {
     return request('/api/videos/bulk-delete/', { method: 'POST', body: { video_ids: videoIds } });
   },
+  async videosBulkUpdate(videoIds = [], partial = {}) {
+    const body = { video_ids: Array.isArray(videoIds) ? videoIds : [] };
+    // only include known fields if provided
+    if (Object.prototype.hasOwnProperty.call(partial, 'allow_comments')) body.allow_comments = !!partial.allow_comments;
+    if (Object.prototype.hasOwnProperty.call(partial, 'allow_download')) body.allow_download = !!partial.allow_download;
+    if (typeof partial.visibility === 'string' && ['public','unlisted','private'].includes(partial.visibility)) body.visibility = partial.visibility;
+    return request('/api/videos/bulk-update/', { method: 'POST', body });
+  },
   async sendLoginCode(email) {
     return request('/api/users/login/send-code/', { method: 'POST', body: { email }, auth: false });
   },
@@ -442,28 +453,35 @@ export const api = {
   },
   async videosUploadWithProgress(file, { title = '', description = '', onProgress = null } = {}) {
     return new Promise((resolve, reject) => {
-      try {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${API_BASE}/api/videos/upload/`);
-        const token = getAccessToken();
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        xhr.onload = () => {
-          try {
-            const ok = xhr.status >= 200 && xhr.status < 300;
-            const data = JSON.parse(xhr.responseText || '{}');
-            if (ok) resolve(data); else reject(new ApiError(parseError({ status: xhr.status, headers: new Headers({ 'Content-Type': 'application/json' }) }, data)));
-          } catch (e) { reject(new ApiError({ status: xhr.status, detail: '解析响应失败' })) }
-        };
-        xhr.onerror = () => reject(new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达' }));
-        if (xhr.upload && typeof onProgress === 'function') {
-          xhr.upload.onprogress = (e) => { if (e && e.lengthComputable) onProgress({ loaded: e.loaded, total: e.total, percent: (e.loaded / e.total) * 100 }) };
-        }
-        const form = new FormData();
-        form.append('file', file);
-        if (title) form.append('title', title);
-        if (description) form.append('description', description);
-        xhr.send(form);
-      } catch (e) { reject(new ApiError({ status: 0, code: 'client_error', detail: String(e) })) }
+      const sendOnce = async (retried = false) => {
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API_BASE}/api/videos/upload/`);
+          const token = getAccessToken();
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          xhr.onload = async () => {
+            const status = xhr.status;
+            let data = {};
+            try { data = JSON.parse(xhr.responseText || '{}') } catch { /* no-op */ }
+            if (status >= 200 && status < 300) { resolve(data); return }
+            if (status === 401 && !retried) {
+              const ok = await tryRefresh();
+              if (ok) { sendOnce(true); return }
+            }
+            reject(new ApiError(parseError({ status, headers: new Headers({ 'Content-Type': 'application/json' }) }, data)));
+          };
+          xhr.onerror = () => reject(new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达' }));
+          if (xhr.upload && typeof onProgress === 'function') {
+            xhr.upload.onprogress = (e) => { if (e && e.lengthComputable) onProgress({ loaded: e.loaded, total: e.total, percent: (e.loaded / e.total) * 100 }) };
+          }
+          const form = new FormData();
+          form.append('file', file);
+          if (title) form.append('title', title);
+          if (description) form.append('description', description);
+          xhr.send(form);
+        } catch (e) { reject(new ApiError({ status: 0, code: 'client_error', detail: String(e) })) }
+      };
+      sendOnce(false);
     })
   },
   async uploadInit({ filename, filesize }) {
@@ -471,28 +489,35 @@ export const api = {
   },
   async uploadChunk({ uploadId, index, blob }, onProgress = null) {
     return new Promise((resolve, reject) => {
-      try {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${API_BASE}/api/videos/upload/chunk/`);
-        const token = getAccessToken();
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        xhr.onload = () => {
-          try {
-            const ok = xhr.status >= 200 && xhr.status < 300;
-            const data = JSON.parse(xhr.responseText || '{}');
-            if (ok) resolve(data); else reject(new ApiError(parseError({ status: xhr.status, headers: new Headers({ 'Content-Type': 'application/json' }) }, data)));
-          } catch (e) { reject(new ApiError({ status: xhr.status, detail: '解析响应失败' })) }
-        };
-        xhr.onerror = () => reject(new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达' }));
-        if (xhr.upload && typeof onProgress === 'function') {
-          xhr.upload.onprogress = (e) => { if (e && e.lengthComputable) onProgress({ loaded: e.loaded, total: e.total, percent: (e.loaded / e.total) * 100, index }) };
-        }
-        const form = new FormData();
-        form.append('upload_id', uploadId);
-        form.append('index', String(index));
-        form.append('chunk', blob, `chunk_${index}`);
-        xhr.send(form);
-      } catch (e) { reject(new ApiError({ status: 0, code: 'client_error', detail: String(e) })) }
+      const sendOnce = async (retried = false) => {
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${API_BASE}/api/videos/upload/chunk/`);
+          const token = getAccessToken();
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          xhr.onload = async () => {
+            const status = xhr.status;
+            let data = {};
+            try { data = JSON.parse(xhr.responseText || '{}') } catch { /* no-op */ }
+            if (status >= 200 && status < 300) { resolve(data); return }
+            if (status === 401 && !retried) {
+              const ok = await tryRefresh();
+              if (ok) { sendOnce(true); return }
+            }
+            reject(new ApiError(parseError({ status, headers: new Headers({ 'Content-Type': 'application/json' }) }, data)));
+          };
+          xhr.onerror = () => reject(new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达' }));
+          if (xhr.upload && typeof onProgress === 'function') {
+            xhr.upload.onprogress = (e) => { if (e && e.lengthComputable) onProgress({ loaded: e.loaded, total: e.total, percent: (e.loaded / e.total) * 100, index }) };
+          }
+          const form = new FormData();
+          form.append('upload_id', uploadId);
+          form.append('index', String(index));
+          form.append('chunk', blob, `chunk_${index}`);
+          xhr.send(form);
+        } catch (e) { reject(new ApiError({ status: 0, code: 'client_error', detail: String(e) })) }
+      };
+      sendOnce(false);
     })
   },
   async uploadStatus(uploadId) {

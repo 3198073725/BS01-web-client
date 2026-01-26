@@ -1,12 +1,36 @@
 <template>
   <router-view />
-  
+  <transition name="fade">
+    <div v-if="ui.dialogOpen" class="sysdlg-mask" @click="ui.hideDialog()"></div>
+  </transition>
+  <transition name="pop">
+    <div v-if="ui.dialogOpen" class="sysdlg" role="dialog" @click.stop>
+      <div class="sysdlg-title">{{ dlgTitle }}</div>
+      <div class="sysdlg-body">{{ ui.dialogMessage }}</div>
+      <div class="sysdlg-actions">
+        <template v-if="ui.dialogConfirm">
+          <button class="btn ghost" @click="ui.cancelDialog()">取消</button>
+          <button class="btn" @click="ui.okDialog()">确定</button>
+        </template>
+        <template v-else>
+          <button class="btn" @click="ui.hideDialog()">好的</button>
+        </template>
+      </div>
+    </div>
+  </transition>
 </template>
 
-<script>
-export default {
-  name: 'App'
-}
+<script setup>
+import { computed } from 'vue'
+import { useUiStore } from '@/stores/ui'
+const ui = useUiStore()
+const dlgTitle = computed(() => {
+  const t = String(ui.dialogType || 'info')
+  if (t === 'error') return '错误'
+  if (t === 'success') return '成功'
+  if (t === 'warn') return '注意'
+  return '提示'
+})
 </script>
 
 <style>
@@ -61,4 +85,18 @@ body { margin: 0; background: var(--bg); color: var(--text); }
   -ms-user-select: none;
   user-select: none;
 }
+
+/* system dialog */
+.sysdlg-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000}
+.sysdlg{position:fixed;left:50%;top:16%;transform:translateX(-50%);width:min(92%,420px);background:var(--bg-elev);border:1px solid var(--border);border-radius:12px;z-index:1001;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:left}
+.sysdlg-title{font-weight:800;padding:12px 16px;border-bottom:1px solid var(--border)}
+.sysdlg-body{padding:16px;color:var(--text)}
+.sysdlg-actions{display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--border)}
+.sysdlg .btn{background:var(--accent);border:1px solid var(--accent);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+.sysdlg .btn.ghost{background:transparent;border:1px solid var(--btn-border);color:var(--text)}
+
+.pop-enter-active,.pop-leave-active{transition:transform .16s ease, opacity .16s ease}
+.pop-enter-from,.pop-leave-to{transform:translate(-50%, -8px);opacity:0}
+.fade-enter-active,.fade-leave-active{transition:opacity .12s ease}
+.fade-enter-from,.fade-leave-to{opacity:0}
 </style>

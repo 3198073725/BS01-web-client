@@ -15,6 +15,25 @@
         <label class="lab">描述</label>
         <textarea v-model.trim="description" rows="5" maxlength="500" placeholder="输入描述（可选）"></textarea>
 
+        <label class="lab">允许评论</label>
+        <select v-model="allowComments">
+          <option :value="true">启用</option>
+          <option :value="false">禁用</option>
+        </select>
+
+        <label class="lab">允许下载</label>
+        <select v-model="allowDownload">
+          <option :value="false">禁用</option>
+          <option :value="true">启用</option>
+        </select>
+
+        <label class="lab">可见性</label>
+        <select v-model="visibility">
+          <option value="public">公开</option>
+          <option value="unlisted">未列出</option>
+          <option value="private">私密</option>
+        </select>
+
         <div class="actions">
           <button class="btn" @click="goPreview">预览</button>
           <button class="btn primary" :disabled="saving" @click="save">{{ saving ? '保存中...' : '保存' }}</button>
@@ -41,6 +60,9 @@ const msg = ref('')
 const detail = ref({})
 const title = ref('')
 const description = ref('')
+const allowComments = ref(true)
+const allowDownload = ref(false)
+const visibility = ref('public')
 
 async function load() {
   loading.value = true
@@ -50,6 +72,9 @@ async function load() {
     detail.value = d || {}
     title.value = d?.title || ''
     description.value = d?.description || ''
+    allowComments.value = (d?.allow_comments !== undefined) ? !!d.allow_comments : true
+    allowDownload.value = (d?.allow_download !== undefined) ? !!d.allow_download : false
+    visibility.value = (typeof d?.visibility === 'string' && d.visibility) ? d.visibility : 'public'
   } catch (e) {
     err.value = e
   } finally {
@@ -61,10 +86,16 @@ async function save() {
   saving.value = true
   msg.value = ''
   try {
-    await api.videoUpdate(vid.value, { title: title.value, description: description.value })
-    msg.value = '已保存'
-    // 重新加载以同步服务端
-    await load()
+    await api.videoUpdate(vid.value, {
+      title: title.value,
+      description: description.value,
+      allow_comments: !!allowComments.value,
+      allow_download: !!allowDownload.value,
+      visibility: visibility.value,
+    })
+    // 保存成功后返回推荐页
+    router.push('/')
+    return
   } catch (e) {
     err.value = e
   } finally {
@@ -86,7 +117,7 @@ onMounted(load)
 .preview { width: 100%; border-radius: 8px; background: #000; }
 .right { display: flex; flex-direction: column; gap: 8px; }
 .lab { font-size: 13px; color: var(--muted); }
-input, textarea { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; }
+input, textarea, select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .btn { background: var(--btn-bg); border: 1px solid var(--btn-border); color: var(--text); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
 .btn.primary { background: var(--accent-bg, #2563eb); border-color: transparent; color: #fff; }
