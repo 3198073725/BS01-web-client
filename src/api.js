@@ -711,7 +711,8 @@ export const api = {
     if (page && Number(page) > 1) params.set('page', String(page));
     if (pageSize) params.set('page_size', String(pageSize));
     const qp = params.toString();
-    const data = await request(`/api/recommendation/feed/${qp ? `?${qp}` : ''}`, { auth: false });
+    // 使用 auth: true，让后端根据登录态返回个性化字段与结果
+    const data = await request(`/api/recommendation/feed/${qp ? `?${qp}` : ''}`, { auth: true });
     return {
       items: Array.isArray(data?.results) ? data.results.map(v => ({
         id: v.id,

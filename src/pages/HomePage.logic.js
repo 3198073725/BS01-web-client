@@ -330,10 +330,14 @@ export function useHomePage() {
             const msg = JSON.parse(e.newValue)
             if (msg && msg.type === 'tokens_set') {
               api.me().then(u => { user.value = u }).catch(() => { user.value = null })
+              // 登录后立刻重载推荐流
+              loadFeed(1)
             }
           } catch (_) { /* no-op */ }
         }
       })
+      // 自定义事件同样处理
+      window.addEventListener('auth:sync', () => { loadFeed(1) })
     } catch (_) { /* no-op */ }
   })
 

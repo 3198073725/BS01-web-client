@@ -10,6 +10,10 @@ export function initialFromUser(user) {
 
 export function buildAvatarUrl(apiBase, rel) {
   if (!rel) return ''
-  const v = String(rel)
-  return v.startsWith('http') ? v : `${apiBase.replace(/\/$/, '')}/media/${v}`
+  const v = String(rel).trim()
+  if (/^https?:\/\//i.test(v)) return v
+  const base = (apiBase || '').replace(/\/$/, '')
+  if (v.startsWith('/')) return `${base}${v}`
+  const path = v.startsWith('media/') ? v : `media/${v}`
+  return `${base}/${path}`
 }

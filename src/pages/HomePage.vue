@@ -18,7 +18,6 @@
         <router-link to="/me/likes" class="nav-item">喜欢</router-link>
       </nav>
       <div class="sidebar-bottom">
-        <router-link to="/test" class="nav-item small">接口测试面板</router-link>
         <div class="footer-links">
           <router-link to="/about" class="footer-link">关于</router-link>
           <router-link to="/terms" class="footer-link">条款</router-link>
@@ -139,7 +138,12 @@ const unread = ref(0)
 function toggleNotif() { showNotif.value = !showNotif.value; if (showNotif.value) refreshUnread() }
 async function refreshUnread() { try { const d = await api.notificationsUnreadCount(); unread.value = Number(d?.unread || 0) } catch (_) { /* no-op */ } }
 onMounted(() => { refreshUnread(); try { window.addEventListener('auth:sync', refreshUnread) } catch (_) { /* no-op */ } })
-function onLoggedIn(me) { auth.user = me; showLogin.value = false }
+function onLoggedIn(me) {
+  auth.user = me
+  showLogin.value = false
+  try { refreshUnread() } catch (_) { /* no-op */ }
+  try { reloadFeed() } catch (_) { /* no-op */ }
+}
 const showLogin = ref(false)
 const uploadOpen = ref(false)
 function onUpload() {
@@ -201,7 +205,17 @@ function onOpenFollow(kind) { followTab.value = kind; followOpen.value = true }
 // 当前是否在 /me 子路由下，用于在内容区渲染“我的”组件
 const route = useRoute()
 const inMe = computed(() => route.path.startsWith('/me'))
-const showChild = computed(() => inMe.value || route.path.startsWith('/featured') || route.path.startsWith('/following') || route.path.startsWith('/friends') || route.path.startsWith('/about') || route.path.startsWith('/terms') || route.path.startsWith('/contact') || route.path.startsWith('/video') || route.path.startsWith('/search'))
+const showChild = computed(() => inMe.value
+  || route.path.startsWith('/featured')
+  || route.path.startsWith('/following')
+  || route.path.startsWith('/friends')
+  || route.path.startsWith('/about')
+  || route.path.startsWith('/terms')
+  || route.path.startsWith('/contact')
+  || route.path.startsWith('/video')
+  || route.path.startsWith('/search')
+  || route.path.startsWith('/settings')
+)
 
 // 当从子页面返回到推荐流时，重新加载并定位到首条，避免空白
 watch(showChild, (v) => {
@@ -210,6 +224,18 @@ watch(showChild, (v) => {
     nextTick(() => goTo(0))
   }
 })
+
+// 启动默认页偏好：首次进入 '/' 时按偏好跳转
+function applyStartTab() {
+  try {
+    if (route.path !== '/') return
+    const pref = localStorage.getItem('home_default_tab') || 'recommend'
+    const map = { featured: '/featured', following: '/following', friends: '/friends', recommend: '/' }
+    const target = map[pref] || '/'
+    if (target !== route.path) router.replace(target).catch(() => {})
+  } catch (_) { /* no-op */ }
+}
+onMounted(() => { applyStartTab() })
 </script>
 
 <style>
@@ -278,7 +304,7 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .avatar-fallback { width:32px; height:32px; border-radius:50%; background: var(--btn-border); color: var(--text); display:flex; align-items:center; justify-content:center; font-weight:700; font-size: 14px; }
 
 .content { flex: 1; display:flex; justify-content:center; padding: 0; overflow: hidden; }
-.feed { width: 100%; height: 100%; overflow-y: auto; }
+.feed { width: 100%; height: 100%; overflow-y: scroll; overflow-x: hidden; scrollbar-gutter: stable both-edges; }
 .feed::-webkit-scrollbar { width: 8px; }
 .feed::-webkit-scrollbar-thumb { background-color: var(--btn-border); border-radius: 8px; }
 .feed-item { height: 100%; padding: 0; display:flex; align-items:center; justify-content:center; }
@@ -296,6 +322,9 @@ body { margin: 0; background: var(--bg); color: var(--text); }
   max-width: 100%;
   /* 维持内视频按比例显示，由 VideoPlayer 内部 object-fit 控制黑边 */
   aspect-ratio: var(--aspect);
+  contain: layout paint;
+  transform: translateZ(0);
+  isolation: isolate;
 }
 .media { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
 .loading { text-align:center; }

@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { api } from '../api'
+import { useUiStore } from '../stores/ui'
 import HomePage from '../pages/HomePage.vue'
-import TestApi from '../components/TestApi.vue'
 import MePage from '../pages/MePage.vue'
 import MeWorks from '../pages/me/Works.vue'
 import MeLikes from '../pages/me/Likes.vue'
@@ -26,6 +27,7 @@ const routes = [
       // 主页仍使用父组件自身内容；当进入 /me/* 时，在 HomePage 的 <router-view/> 中显示子组件
       {
         path: 'me',
+        meta: { requiresAuth: true },
         component: MePage,
         children: [
           { path: '', name: 'me-default', redirect: { name: 'me-works' } },
@@ -43,12 +45,12 @@ const routes = [
       { path: 'search', name: 'search', component: SearchPage },
       { path: 'terms', name: 'terms', component: TermsPage },
       { path: 'contact', name: 'contact', component: ContactPage },
-      { path: 'settings', name: 'settings', component: SettingsPage },
+      { path: 'settings', name: 'settings', meta: { requiresAuth: true }, component: SettingsPage },
       { path: 'video/:id', name: 'video', component: VideoPage },
-      { path: 'video/:id/edit', name: 'video-edit', component: VideoEdit },
+      { path: 'video/:id/edit', name: 'video-edit', meta: { requiresAuth: true }, component: VideoEdit },
     ],
   },
-  { path: '/test', name: 'test', component: TestApi },
+  
 ]
 
 const router = createRouter({
@@ -74,6 +76,18 @@ router.beforeEach((to, from, next) => {
       vids && vids.forEach(v => { try { v.pause() } catch (_) { /* no-op */ } })
     } catch (_) { /* no-op */ }
   }
+  try {
+    const needsAuth = to.matched && to.matched.some(r => (r.meta && r.meta.requiresAuth))
+    if (needsAuth) {
+      const token = (api && typeof api.getAccessToken === 'function') ? api.getAccessToken() : ''
+      if (!token) {
+        try { const ui = useUiStore(); ui.showDialog('请先登录', 'warn') } catch (_) { /* no-op */ }
+        try { localStorage.setItem('post_login_redirect', to.fullPath) } catch (_) { /* no-op */ }
+        next({ path: '/' })
+        return
+      }
+    }
+  } catch (_) { /* no-op */ }
   next()
 })
 

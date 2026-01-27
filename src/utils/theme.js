@@ -6,7 +6,15 @@ export function saveTheme(theme) {
   try { localStorage.setItem('theme', theme) } catch (_) { /* no-op */ }
 }
 export function applyTheme(theme) {
-  try { document.documentElement.setAttribute('data-theme', theme) } catch (_) { /* no-op */ }
+  try {
+    if (theme === 'system') {
+      const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)')
+      const dark = !!(mq && mq.matches)
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+    } else {
+      document.documentElement.setAttribute('data-theme', theme)
+    }
+  } catch (_) { /* no-op */ }
 }
 export function toggleThemeValue(cur) {
   return cur === 'dark' ? 'light' : 'dark'

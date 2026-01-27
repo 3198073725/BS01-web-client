@@ -94,7 +94,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import PlayerOverlay from './PlayerOverlay.vue'
 import CommentsSection from './CommentsSection.vue'
 import { api } from '@/api'
@@ -120,7 +120,7 @@ const props = defineProps({
   metaFavorited: { type: Boolean, default: false },
   commentsAllowed: { type: Boolean, default: true },
 })
-const emit = defineEmits(['request-next', 'request-prev', 'error', 'update-like', 'update-favorite', 'share'])
+const emit = defineEmits(['request-next', 'request-prev', 'error', 'update-like', 'update-favorite', 'update-comments', 'share'])
 
 const wrap = ref(null)
 const video = ref(null)
@@ -162,8 +162,39 @@ const triedFallback = ref(false)
 
 // 评论面板开关
 const commentsOpen = ref(false)
-function openCommentsPanel() { commentsOpen.value = true }
-function closeCommentsPanel() { commentsOpen.value = false }
+function lockWrap() {
+  try {
+    const el = wrap.value
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    el.style.width = `${Math.round(r.width)}px`
+    el.style.height = `${Math.round(r.height)}px`
+  } catch (_) { /* no-op */ }
+}
+function unlockWrap() {
+  try {
+    const el = wrap.value
+    if (!el) return
+    el.style.width = ''
+    el.style.height = ''
+  } catch (_) { /* no-op */ }
+}
+function openCommentsPanel() {
+  lockWrap()
+  commentsOpen.value = true
+  nextTick(() => {
+    try {
+      const el = drawerComposer.value
+      if (el && typeof el.focus === 'function') {
+        try { el.focus({ preventScroll: true }) } catch (_) { el.focus() }
+      }
+    } catch (_) { /* no-op */ }
+  })
+}
+function closeCommentsPanel() {
+  commentsOpen.value = false
+  setTimeout(() => { unlockWrap() }, 220)
+}
 
 const hoverTime = ref(null)
 const hoverPct = ref(0)
@@ -207,6 +238,8 @@ const resumeAt = ref(null)
 function resumeKey() { return props.videoId ? `vp_pos:${props.videoId}` : '' }
 function loadResume() {
   try {
+    // respect global resume toggle
+    try { if (localStorage.getItem('vp_resume') === '0') { resumeAt.value = null; return } } catch (_) { /* no-op */ }
     const k = resumeKey(); if (!k) { resumeAt.value = null; return }
     const v = parseFloat(localStorage.getItem(k) || 'NaN')
     resumeAt.value = (Number.isFinite(v) && v > 0) ? v : null
@@ -214,6 +247,7 @@ function loadResume() {
 }
 function saveResume() {
   try {
+    try { if (localStorage.getItem('vp_resume') === '0') return } catch (_) { /* no-op */ }
     const k = resumeKey(); if (!k) return
     const now = Date.now(); if (now - lastSaveTs < 1000) return
     lastSaveTs = now
@@ -425,6 +459,7 @@ function onKey(e) {
   else if (e.code === 'ArrowDown') { e.preventDefault(); volume.value = Math.max(0, volume.value - 0.05); if (volume.value===0) mutedState.value=true; applyVolume() }
   else if (e.code === 'PageDown') { e.preventDefault(); emit('request-next') }
   else if (e.code === 'PageUp') { e.preventDefault(); emit('request-prev') }
+  else if (e.code === 'KeyC') { e.preventDefault(); openCommentsPanel() }
 }
 
 async function submitDrawerComment() {
@@ -436,6 +471,7 @@ async function submitDrawerComment() {
     const c = await api.commentCreate({ videoId: String(props.videoId), content })
     try { commentsRef.value && commentsRef.value.prepend && commentsRef.value.prepend(c) } catch (_) { /* no-op */ }
     newComment.value = ''
+    try { emit('update-comments', { videoId: props.videoId, delta: 1 }) } catch (_) { /* no-op */ }
   } catch (e) {
     try {
       const st = Number((e && e.status) || 0)
@@ -688,6 +724,7 @@ onMounted(async () => {
     const v = parseFloat(localStorage.getItem('vp_vol') || '0.6'); if (!Number.isNaN(v)) volume.value = Math.min(1, Math.max(0, v))
     const m = localStorage.getItem('vp_muted'); if (m === '0' || m === '1') mutedState.value = (m === '1')
     const an = localStorage.getItem('vp_autonext'); if (an === '1') autonext.value = true
+    const r = parseFloat(localStorage.getItem('vp_rate') || 'NaN'); if (!Number.isNaN(r) && r > 0) rate.value = r
   } catch (_) { void 0 }
   addPreconnect(props.src); addPreconnect(props.nextSrc)
   await setSource(props.src)
@@ -697,6 +734,9 @@ onMounted(async () => {
 
 // 根据 autoplay 切换全局键盘监听，仅当前激活播放器绑定
 watch(() => props.autoplay, (nv) => { bindKeys(!!nv) })
+
+// Persist default playback rate when user changes it
+watch(() => rate.value, (nv) => { try { if (Number.isFinite(nv)) localStorage.setItem('vp_rate', String(nv)) } catch (_) { /* no-op */ } })
 
 onBeforeUnmount(() => {
   bindKeys(false)
@@ -715,8 +755,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.vp{position:relative;width:100%;height:100%;background:#000;border-radius:12px;overflow:hidden}
-.vd{width:100%;height:100%;display:block;background:#000;object-fit:contain}
+.vp{position:relative;width:100%;height:100%;background:#000;border-radius:12px;overflow:hidden;contain:layout paint;overflow-anchor:none;overscroll-behavior:contain}
+.vd{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000;object-fit:contain;transform:translateZ(0);backface-visibility:hidden}
 .hud{position:absolute;left:0;right:0;bottom:5px;display:flex;align-items:center;gap:8px;padding:8px;background:linear-gradient(transparent,rgba(0,0,0,.6));color:#fff}
 .left{display:flex;align-items:center;gap:8px}
 .middle{position:relative;flex:1;height:28px;display:flex;align-items:center;cursor:pointer}
@@ -751,7 +791,7 @@ onBeforeUnmount(() => {
 
 /* 评论抽屉样式 */
 .comments-mask{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:5}
-.comments-drawer{position:absolute;top:0;right:0;bottom:0;width:420px;max-width:92%;background:var(--bg-elev);border-left:1px solid var(--border);z-index:6;display:flex;flex-direction:column;pointer-events:auto;border-top-left-radius:12px;border-bottom-left-radius:12px;box-shadow:-8px 0 24px rgba(0,0,0,.25)}
+.comments-drawer{position:absolute;top:0;right:0;bottom:0;width:420px;max-width:92%;background:var(--bg-elev);border-left:1px solid var(--border);z-index:6;display:flex;flex-direction:column;pointer-events:auto;border-top-left-radius:12px;border-bottom-left-radius:12px;box-shadow:-8px 0 24px rgba(0,0,0,.25);will-change:transform}
 .comments-drawer .c-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border)}
 .comments-drawer .c-head .ttl{font-weight:800}
 .comments-drawer .c-head .close{background:transparent;border:none;color:var(--text);font-size:18px;cursor:pointer}
@@ -763,7 +803,7 @@ onBeforeUnmount(() => {
 
 /* 过渡动画 */
 .slide-right-enter-active,.slide-right-leave-active{transition:transform .18s ease}
-.slide-right-enter-from,.slide-right-leave-to{transform:translateX(100%)}
+.slide-right-enter-from,.slide-right-leave-to{transform:translate3d(100%,0,0)}
 .fade-enter-active,.fade-leave-active{transition:opacity .18s ease}
 .fade-enter-from,.fade-leave-to{opacity:0}
 </style>

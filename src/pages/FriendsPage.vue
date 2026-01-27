@@ -120,7 +120,14 @@ function onRequestPrev() {
 
 onMounted(() => {
   load(1).then(()=> nextTick(()=> goTo(0)))
+  try { window.addEventListener('auth:sync', onAuthSync) } catch (_) { /* no-op */ }
 })
+
+function onAuthSync() {
+  if (aborted) return
+  needLogin.value = false
+  load(1).then(() => nextTick(() => goTo(0)))
+}
 </script>
 
 <style scoped>

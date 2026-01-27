@@ -27,6 +27,7 @@
           @error="onPlayerError"
           @update-like="onUpdateLike"
           @update-favorite="onUpdateFavorite"
+          @update-comments="onUpdateComments"
         />
       </div>
       <div class="meta">
@@ -147,14 +148,20 @@ async function init() {
   }
 }
 
-async function goNext() {
+async function goNext(payload) {
   if (nextItem.value) {
-    router.push({ name: 'video', params: { id: nextItem.value.id } })
+    const auto = !!(payload && payload.auto)
+    const nav = { name: 'video', params: { id: nextItem.value.id } }
+    const p = auto ? router.push(nav) : router.replace(nav)
+    try { p && p.catch && p.catch(() => {}) } catch (_) { /* no-op */ }
     return
   }
   if (hasNext.value && !feedLoading.value) {
     await loadFeed(page.value + 1)
-    if (nextItem.value) router.push({ name: 'video', params: { id: nextItem.value.id } })
+    if (nextItem.value) {
+      const nav = { name: 'video', params: { id: nextItem.value.id } }
+      try { router.push(nav).catch(() => {}) } catch (_) { /* no-op */ }
+    }
   }
 }
 
@@ -185,6 +192,16 @@ function onUpdateFavorite({ videoId, favorited, favoriteCount }) {
   } catch (_) { /* no-op */ }
 }
 
+function onUpdateComments({ videoId, delta }) {
+  try {
+    if (String(videoId) === String(vid.value)) {
+      const d = detail.value || {}
+      const cnt = Number(d.comment_count || 0) + Number(delta || 0)
+      detail.value = { ...d, comment_count: Math.max(0, cnt) }
+    }
+  } catch (_) { /* no-op */ }
+}
+
 onMounted(init)
 watch(() => route.params.id, async () => {
   // 路由切换后，仅补齐当前播放源与下一条缓存
@@ -197,7 +214,9 @@ watch(() => route.params.id, async () => {
 <style scoped>
 .video-page { max-width: 960px; margin: 16px auto; padding: 0 12px; color: var(--text); }
 .title { font-size: 20px; font-weight: 800; margin: 8px 0 12px; }
-.player { background: var(--bg-elev); border:1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.player { position: relative; background: var(--bg-elev); border:1px solid var(--border); border-radius: 12px; overflow: hidden; }
+/* Allocate height for the player so inner .vp (height:100%) is visible */
+.player { aspect-ratio: var(--aspect, 16/9); min-height: 360px; }
 .placeholder { padding: 40px 0; text-align:center; color: var(--muted); }
 .meta { color: var(--muted); margin-top: 8px; }
 .loading { color: var(--muted); }
