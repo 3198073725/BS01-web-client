@@ -4,6 +4,12 @@
     <div v-else-if="err" class="error">{{ err.detail || '加载失败' }}</div>
     <div v-else class="content">
       <h1 class="title">{{ currentTitle }}</h1>
+      <div class="submeta" v-if="(detail && (detail.category || (detail.tags && detail.tags.length)))">
+        <span v-if="detail && detail.category" class="cat">分类：{{ detail.category.name }}</span>
+        <div class="tags" v-if="detail && Array.isArray(detail.tags) && detail.tags.length">
+          <span class="tag" v-for="(t,i) in detail.tags" :key="t.id || i">{{ t.name }}</span>
+        </div>
+      </div>
       <div class="player">
         <VideoPlayer
           :src="currentSrc"
@@ -214,6 +220,9 @@ watch(() => route.params.id, async () => {
 <style scoped>
 .video-page { max-width: 960px; margin: 16px auto; padding: 0 12px; color: var(--text); }
 .title { font-size: 20px; font-weight: 800; margin: 8px 0 12px; }
+.submeta { display:flex; gap:12px; align-items:center; flex-wrap:wrap; color:#6b7280; margin: 0 0 8px; }
+.tags { display:flex; gap:6px; flex-wrap:wrap; }
+.tag { font-size:12px; color:#6b7280; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:999px; padding:2px 8px; }
 .player { position: relative; background: var(--bg-elev); border:1px solid var(--border); border-radius: 12px; overflow: hidden; }
 /* Allocate height for the player so inner .vp (height:100%) is visible */
 .player { aspect-ratio: var(--aspect, 16/9); min-height: 360px; }

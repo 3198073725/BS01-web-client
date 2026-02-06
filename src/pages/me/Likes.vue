@@ -6,7 +6,7 @@
         <span>已选 {{ selectedIds.length }} 项</span>
         <button class="btn danger" :disabled="!selectedIds.length || acting" @click="doBulk">取消喜欢</button>
       </div>
-      <CardGrid :items="items" :loading="loading" :selectable="bulkManage" :selected-ids="selectedIds" @toggle="toggleSelect" />
+      <CardGrid :items="items" :loading="loading" :selectable="bulkManage" :selected-ids="selectedIds" @toggle="toggleSelect" @open="open" />
       <div v-if="!loading && err" class="error">
         <span>{{ err.detail || '加载失败' }}</span>
         <button class="btn" @click="retry">重试</button>
@@ -19,6 +19,7 @@
 </template>
 <script>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import CardGrid from '@/components/CardGrid.vue'
 import { api } from '@/api'
 import { useScrollMemory } from '@/composables/useScrollMemory'
@@ -28,6 +29,8 @@ export default {
   name: 'MeLikes',
   components: { CardGrid },
   setup() {
+    const router = useRouter()
+    const route = useRoute()
     const items = ref([])
     const page = ref(1)
     const hasNext = ref(false)
@@ -73,11 +76,17 @@ export default {
       if (!confirm(`确认取消喜欢 ${selectedIds.value.length} 项？`)) return
       try { acting.value = true; await api.bulkUnlike(selectedIds.value); selectedIds.value = []; await fetchPage(1) } finally { acting.value = false }
     }
+    function open(id) {
+      if (!id) return
+      const q = { id }
+      if (route.query.user_id) q.user_id = route.query.user_id
+      router.push({ path: `/play/likes`, query: q })
+    }
     async function retry() { await init() }
 
     onMounted(init)
     return { items, loading, hasNext, loadMore, loadingMore, needLogin, err, retry,
-             bulkManage, selectedIds, toggleSelect, acting, doBulk }
+             bulkManage, selectedIds, toggleSelect, acting, doBulk, open }
   }
 }
 </script>

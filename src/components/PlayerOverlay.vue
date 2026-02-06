@@ -8,8 +8,16 @@
         </div>
       </div>
       <div class="title" v-if="title">{{ title }}</div>
+      <div class="tags" v-if="tags && tags.length">
+        <span class="tag" v-for="(t,i) in tags.slice(0,3)" :key="t.id || i">{{ t.name }}</span>
+      </div>
     </div>
     <div class="right">
+      <div v-if="canEdit && statusText" class="badge-status">{{ statusText }}</div>
+      <div v-if="transcodeError" class="fail-tip">转码失败：{{ transcodeError }}</div>
+      <button class="retry-btn" v-if="canRetryTranscode" @click.stop="retryTranscode" :disabled="retryBusy">
+        {{ retryBusy ? '重试中…' : '重试转码' }}
+      </button>
       <button class="avatar-btn" @click.stop="onAvatarClick" title="作者主页">
         <img v-if="authorAvatar" :src="authorAvatar" class="avatar round" />
         <div v-else class="avatar round fallback">{{ avatarLetter }}</div>
@@ -33,7 +41,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
@@ -67,6 +75,11 @@ const following = ref(false)
 const busyFollow = ref(false)
 const busyLike = ref(false)
 const busyFav = ref(false)
+const tags = ref([])
+const status = ref('')
+const transcodeError = ref('')
+const canEdit = ref(false)
+const retryBusy = ref(false)
 
 
 // 若外部未提供 author，自动从视频详情补齐
@@ -76,11 +89,31 @@ async function ensureAuthor() {
   try {
     const d = await api.videoDetail(props.videoId)
     if (d && d.author) authorLoaded.value = d.author
+    if (typeof d?.status === 'string') status.value = d.status
+    if (typeof d?.transcode_error === 'string') transcodeError.value = d.transcode_error
+    canEdit.value = !!d?.can_edit
     if (typeof d?.liked === 'boolean') liked.value = !!d.liked
     if (typeof d?.favorited === 'boolean') favorited.value = !!d.favorited
     if (typeof d?.like_count === 'number') likeCount.value = d.like_count
     if (typeof d?.favorite_count === 'number') favoriteCount.value = d.favorite_count
+    try { tags.value = Array.isArray(d?.tags) ? d.tags : [] } catch (_) { tags.value = [] }
   } catch (_) { /* no-op */ }
+}
+
+async function retryTranscode() {
+  if (!canRetryTranscode.value || retryBusy.value) return
+  if (!user.value) { try { ui.showDialog('请先登录', 'warn') } catch (e) { void e } return }
+  retryBusy.value = true
+  try {
+    await api.retryTranscode(props.videoId)
+    try { ui.showDialog('已重新提交转码，稍后刷新状态', 'success') } catch (_) { /* no-op */ }
+    status.value = 'processing'
+    transcodeError.value = ''
+  } catch (e) {
+    try { ui.showDialog((e && (e.detail || e.message)) || '重试失败', 'error') } catch (_) { /* no-op */ }
+  } finally {
+    retryBusy.value = false
+  }
 }
 
 // 初始化关注状态：用于决定是否显示“关注”按钮
@@ -97,6 +130,10 @@ async function ensureFollowStatus() {
 }
 watch(() => authorLoaded.value, () => { ensureFollowStatus() })
 onMounted(() => { ensureFollowStatus() })
+// 登录状态变更后，重新探测关注关系
+watch(user, () => { ensureFollowStatus() })
+try { onMounted(() => { window.addEventListener('auth:sync', ensureFollowStatus) }) } catch (_) { /* no-op */ }
+onBeforeUnmount(() => { try { window.removeEventListener('auth:sync', ensureFollowStatus) } catch (_) { /* no-op */ } })
 
 onMounted(ensureAuthor)
 watch(() => props.videoId, ensureAuthor)
@@ -116,6 +153,16 @@ const canFollow = computed(() => {
   const aid = curAuthor.value && curAuthor.value.id
   if (!uid || !aid) return false
   return String(uid) !== String(aid)
+})
+const canRetryTranscode = computed(() => {
+  if (!canEdit.value) return false
+  const s = (status.value || '').toLowerCase()
+  return s === 'processing' || s === 'banned' || !!transcodeError.value
+})
+const statusText = computed(() => {
+  const s = (status.value || '').toLowerCase()
+  const map = { published: '已发布', processing: '转码中', draft: '草稿', banned: '转码失败' }
+  return map[s] || status.value || ''
 })
 
 // 名称与头像的回退处理，避免出现“@用户”或头像不显示
@@ -185,18 +232,9 @@ function goAuthor() {
   } catch (_) { /* no-op */ }
 }
 function openComments() { try { emit('open-comments', { videoId: props.videoId }) } catch (_) { /* no-op */ } }
-async function share() {
-  try {
-    // 优先复制/分享视频详情页链接，避免首页无限滚动的短期路由
-    let url = window.location.href
-    try {
-      const { origin } = window.location
-      if (origin && props.videoId) url = `${origin}/video/${props.videoId}`
-    } catch (_) { /* no-op */ }
-    if (navigator.share) { await navigator.share({ title: props.title || '分享视频', url }) }
-    else { await navigator.clipboard.writeText(url); ui.showDialog('链接已复制', 'success') }
-    try { emit('share', { videoId: props.videoId }) } catch (_) { /* no-op */ }
-  } catch (_) { /* no-op */ }
+function share() {
+  // 统一交由父组件弹出分享弹窗，避免因浏览器权限/HTTPS 限制导致无响应
+  try { emit('share', { videoId: props.videoId }) } catch (_) { /* no-op */ }
 }
 </script>
 
@@ -204,6 +242,8 @@ async function share() {
 .overlay{position:absolute;inset:0;pointer-events:none;z-index:3}
 .left{position:absolute;left:16px;bottom:50px;display:flex;flex-direction:column;gap:8px;max-width:40%;pointer-events:auto}
 .right{position:absolute;right:16px;bottom:130px;top:auto;transform:none;display:flex;flex-direction:column;gap:24px;align-items:center;pointer-events:auto}
+.retry-btn{background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.35);padding:8px 12px;border-radius:10px;cursor:pointer}
+.badge-status{background:rgba(0,0,0,.35);color:#fff;padding:4px 8px;border-radius:999px;font-size:12px;margin-top:4px}
 .author{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.35);color:#fff;padding:6px 8px;border-radius:999px}
 .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,.35)}
 .avatar.round{width:48px;height:48px}
@@ -213,7 +253,9 @@ async function share() {
 .names{display:flex;flex-direction:column;gap:2px}
 .name{font-weight:700;font-size:14px}
 .time{font-size:12px;opacity:.9}
-.title{background:rgba(0,0,0,.35);color:#fff;padding:6px 10px;border-radius:8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.title{background:rgba(0,0,0,.35);color:#fff;padding:6px 10px;border-radius:8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;line-clamp:2;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.tag{font-size:12px;color:#f3f4f6;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:2px 8px}
 .icon{background:rgba(0,0,0,.35);border:none;color:#fff;border-radius:12px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .icon .cnt{display:block;margin-top:4px;font-size:12px}
 .btn.follow{margin-left:6px;background:#ff2e63;border:none;color:#fff;border-radius:999px;padding:6px 10px;cursor:pointer}

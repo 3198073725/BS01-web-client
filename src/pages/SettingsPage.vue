@@ -49,6 +49,7 @@
         <label>保存登录状态</label>
         <button class="btn" :class="{ active: auth.remember }" @click="toggleRemember">{{ auth.remember ? '已开启' : '已关闭' }}</button>
       </div>
+      
     </section>
 
     <section class="card">

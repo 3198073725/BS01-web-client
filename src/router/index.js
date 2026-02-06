@@ -18,6 +18,8 @@ import FollowingPage from '../pages/FollowingPage.vue'
 import FriendsPage from '../pages/FriendsPage.vue'
 import FeaturedPage from '../pages/FeaturedPage.vue'
 import SearchPage from '../pages/SearchPage.vue'
+import SearchFeed from '../pages/SearchFeed.vue'
+import FeedPlayer from '../pages/me/FeedPlayer.vue'
 
 const routes = [
   {
@@ -38,11 +40,13 @@ const routes = [
           { path: 'watch-later', name: 'me-watch-later', component: MeWatchLater },
         ],
       },
+      { path: 'play/:source', name: 'feed-player', component: FeedPlayer, props: true, meta: { requiresAuth: true } },
       { path: 'about', name: 'about', component: AboutPage },
       { path: 'featured', name: 'featured', component: FeaturedPage },
       { path: 'following', name: 'following', component: FollowingPage },
       { path: 'friends', name: 'friends', component: FriendsPage },
       { path: 'search', name: 'search', component: SearchPage },
+      { path: 'search/feed', name: 'search-feed', component: SearchFeed },
       { path: 'terms', name: 'terms', component: TermsPage },
       { path: 'contact', name: 'contact', component: ContactPage },
       { path: 'settings', name: 'settings', meta: { requiresAuth: true }, component: SettingsPage },

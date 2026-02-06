@@ -6,7 +6,7 @@
         <span>已选 {{ selectedIds.length }} 项</span>
         <button class="btn danger" :disabled="!selectedIds.length || acting" @click="doBulk">移除稍后再看</button>
       </div>
-      <CardGrid :items="items" :loading="loading" :selectable="bulkManage" :selected-ids="selectedIds" @toggle="toggleSelect" />
+      <CardGrid :items="items" :loading="loading" :selectable="bulkManage" :selected-ids="selectedIds" @toggle="toggleSelect" @open="open" />
       <div class="pager" v-if="!loading && hasNext">
         <button class="btn" @click="loadMore" :disabled="loadingMore">加载更多</button>
       </div>
@@ -15,6 +15,7 @@
 </template>
 <script>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import CardGrid from '@/components/CardGrid.vue'
 import { api } from '@/api'
 import { useScrollMemory } from '@/composables/useScrollMemory'
@@ -24,6 +25,7 @@ export default {
   name: 'MeWatchLater',
   components: { CardGrid },
   setup() {
+    const router = useRouter()
     const items = ref([])
     const page = ref(1)
     const hasNext = ref(false)
@@ -58,6 +60,10 @@ export default {
       const i = selectedIds.value.indexOf(id)
       if (i >= 0) selectedIds.value.splice(i,1); else selectedIds.value.push(id)
     }
+    function open(id) {
+      if (!id) return
+      router.push({ name: 'feed-player', params: { source: 'watch-later' }, query: { id } })
+    }
     async function doBulk() {
       if (!selectedIds.value.length) return
       if (!confirm(`确认移除 ${selectedIds.value.length} 项？`)) return
@@ -66,7 +72,7 @@ export default {
 
     onMounted(init)
     return { items, loading, hasNext, loadMore, loadingMore, needLogin,
-             bulkManage, selectedIds, toggleSelect, acting, doBulk }
+             bulkManage, selectedIds, toggleSelect, acting, doBulk, open }
   }
 }
 </script>

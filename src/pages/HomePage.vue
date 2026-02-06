@@ -209,6 +209,7 @@ const showChild = computed(() => inMe.value
   || route.path.startsWith('/featured')
   || route.path.startsWith('/following')
   || route.path.startsWith('/friends')
+  || route.path.startsWith('/play')
   || route.path.startsWith('/about')
   || route.path.startsWith('/terms')
   || route.path.startsWith('/contact')

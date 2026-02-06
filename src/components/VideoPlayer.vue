@@ -18,7 +18,7 @@
       :initial-favorited="metaFavorited"
       @update-like="(p) => emit('update-like', p)"
       @update-favorite="(p) => emit('update-favorite', p)"
-      @share="(p) => emit('share', p)"
+      @share="openShareModal"
       @open-comments="openCommentsPanel"
     />
     <!-- 评论抽屉与遮罩 -->
@@ -75,15 +75,12 @@
             </template>
           </div>
         </div>
-
-        <select class="sel" v-model.number="rate" @change="applyRate">
-          <option :value="0.5">0.5x</option>
-          <option :value="0.75">0.75x</option>
-          <option :value="1">1x</option>
-          <option :value="1.25">1.25x</option>
-          <option :value="1.5">1.5x</option>
-          <option :value="2">2x</option>
-        </select>
+        <div class="rate-menu">
+          <button class="btn small" title="播放速度">{{ rateLabel }}</button>
+          <div class="rmenu">
+            <button class="ritem" v-for="r in rateOptions" :key="r" :class="{active: rate === r}" @click="setRate(r)">{{ r }}x</button>
+          </div>
+        </div>
         <button class="btn" @click.stop="enterPiP">PiP</button>
         <button class="btn" :class="{ on: autonext }" @click.stop="toggleAutoNext">{{ autonext ? '连播:开' : '连播:关' }}</button>
       </div>
@@ -91,6 +88,44 @@
     <!-- 底部常驻迷你进度条（不受 HUD 显隐影响） -->
     <div class="mini-progress"><div class="mini-cur" :style="{ width: curPct + '%' }"></div></div>
   </div>
+
+  <transition name="fade">
+    <div v-if="shareOpen" class="share-mask" @click.self="closeShare">
+      <div class="share-modal">
+        <header>
+          <div class="ttl">分享</div>
+          <button class="close" @click="closeShare">✕</button>
+        </header>
+        <div class="body">
+          <div class="row">
+            <label>链接</label>
+            <div class="link">
+              <input :value="shareLink" readonly />
+              <div class="actions">
+                <button class="btn small ghost" @click="copyLink">复制</button>
+                <button class="btn small ghost" v-if="canSystemShare" @click="systemShare">系统分享</button>
+              </div>
+            </div>
+          </div>
+          <div class="row dual">
+            <div class="cell">
+              <label>稍后看</label>
+              <button class="btn small" :class="{on: watchLaterSaved}" :disabled="shareBusy" @click="toggleWatchLater">
+                {{ watchLaterSaved ? '已加入' : '加入' }}
+              </button>
+            </div>
+            <div class="cell">
+              <label>下载</label>
+              <template v-if="downloadUrl">
+                <a class="btn small ghost" :href="downloadUrl" download target="_blank" rel="noreferrer">下载视频</a>
+              </template>
+              <span v-else class="muted">作者未开启下载</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -154,11 +189,112 @@ let hideTimer = null
 const volume = ref(0.6)
 const mutedState = ref(!!props.muted)
 const rate = ref(1)
+const rateOptions = [0.5, 0.75, 1, 1.25, 1.5, 2]
+const rateLabel = computed(() => `${rate.value}x`)
 // HLS levels
 const levels = ref([])
 const level = ref(-1) // -1 自动，其它为 level index
 const isHls = ref(false)
 const triedFallback = ref(false)
+
+// --- 分享弹窗 ---
+const shareOpen = ref(false)
+const shareBusy = ref(false)
+const watchLaterSaved = ref(false)
+const downloadUrl = ref('')
+const shareLink = computed(() => {
+  try {
+    const origin = window?.location?.origin || ''
+    return props.videoId ? `${origin}/video/${props.videoId}` : origin
+  } catch (_) { return '' }
+})
+const canSystemShare = computed(() => typeof navigator !== 'undefined' && !!navigator.share)
+
+function watchLaterKey() { return props.videoId ? `watchlater:${props.videoId}` : '' }
+function loadWatchLaterLocal() {
+  try {
+    const k = watchLaterKey(); if (!k) return null
+    const v = localStorage.getItem(k)
+    if (v === '1') return true
+    if (v === '0') return false
+    return null
+  } catch (_) { return null }
+}
+function saveWatchLaterLocal(v) {
+  try {
+    const k = watchLaterKey(); if (!k) return
+    localStorage.setItem(k, v ? '1' : '0')
+  } catch (_) { /* no-op */ }
+}
+
+async function openShareModal() {
+  shareOpen.value = true
+  await ensureShareData()
+}
+function closeShare() { shareOpen.value = false }
+
+async function ensureShareData() {
+  if (!props.videoId) return
+  try {
+    const d = await api.videoDetail(props.videoId)
+    downloadUrl.value = d?.allow_download ? (d?.video_url || d?.hls_master_url || '') : ''
+    if (typeof d?.watch_later === 'boolean') {
+      watchLaterSaved.value = !!d.watch_later
+      saveWatchLaterLocal(watchLaterSaved.value)
+    } else {
+      const local = loadWatchLaterLocal()
+      if (local !== null) watchLaterSaved.value = local
+    }
+  } catch (_) {
+    downloadUrl.value = ''
+    const local = loadWatchLaterLocal()
+    if (local !== null) watchLaterSaved.value = local
+  }
+}
+
+async function copyLink() {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareLink.value)
+    } else {
+      // 兼容 http、本地文件或禁用 Clipboard API 的环境
+      const ta = document.createElement('textarea')
+      ta.value = shareLink.value
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    ui.showDialog('链接已复制', 'success')
+  } catch (_) {
+    ui.showDialog('复制失败，请手动复制上方链接', 'error')
+  }
+}
+
+async function systemShare() {
+  if (!canSystemShare.value) return
+  try {
+    await navigator.share({ title: props.metaTitle || '分享视频', url: shareLink.value })
+  } catch (_) { /* no-op */ }
+}
+
+async function toggleWatchLater() {
+  if (!props.videoId || shareBusy.value) return
+  shareBusy.value = true
+  try {
+    const res = await api.watchLaterToggle(props.videoId)
+    // 若后端未返回 saved，前端取反以体现状态
+    if (typeof res?.saved === 'boolean') watchLaterSaved.value = !!res.saved
+    else watchLaterSaved.value = !watchLaterSaved.value
+    saveWatchLaterLocal(watchLaterSaved.value)
+  } catch (e) {
+    ui.showDialog((e && (e.detail || e.message)) || '操作失败', 'error')
+  } finally {
+    shareBusy.value = false
+  }
+}
 
 // 评论面板开关
 const commentsOpen = ref(false)
@@ -390,6 +526,7 @@ function toggleMute() { mutedState.value = !mutedState.value; applyVolume() }
 function onWheelVolume(e) { const d = e.deltaY; volume.value = Math.min(1, Math.max(0, volume.value - d/1000)); if (volume.value>0) mutedState.value=false; applyVolume() }
 
 function applyRate() { try { video.value.playbackRate = rate.value } catch (_) { void 0 } }
+function setRate(v) { rate.value = v; applyRate() }
 
 const seeking = ref(false)
 let seekRect = null
@@ -429,7 +566,7 @@ function onDocSeekEnd() {
 }
 
 function onMouseMove() { controlsVisible.value = true; scheduleHide() }
-function scheduleHide() { if (!isPlaying.value) return; clearHide(); hideTimer = setTimeout(()=>{ controlsVisible.value=false }, 2500) }
+function scheduleHide() { if (!isPlaying.value) return; clearHide(); hideTimer = setTimeout(()=>{ controlsVisible.value=false }, 2000) }
 function clearHide() { if (hideTimer) { clearTimeout(hideTimer); hideTimer=null } }
 
 function onWheel(e) {
@@ -769,25 +906,67 @@ onBeforeUnmount(() => {
 .thumbimg img{display:block;}
 .thumbbox .tt{margin-top:4px;color:#fff;font-size:12px;text-align:center;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:4px}
 .right{display:flex;align-items:center;gap:8px}
-.btn{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer}
+.btn{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:5px;padding:3px 6px;cursor:pointer;font-size:12px}
 .btn.on{background:var(--accent);color:#000}
-.btn.small{padding:4px 8px;font-size:12px}
-.range{width:80px}
-.sel{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:6px;padding:6px 8px}
+.btn.small{padding:2px 5px;font-size:11px}
+.range{width:70px}
+.sel{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:5px;padding:4px 6px;font-size:12px}
 .time{font-size:12px;color:#eee}
 .vol{display:flex;align-items:center;gap:6px}
 .vol-pop{position:relative;display:flex;align-items:center}
-.vol-pop .vol-menu{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);opacity:0;pointer-events:none;transition:opacity .12s ease; transition-delay: 1s; width:36px;height:110px;display:flex;align-items:center;justify-content:center; background:transparent; border:none; padding:0; z-index:50}
+.vol-pop .vol-menu{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);opacity:0;pointer-events:none;transition:opacity .1s ease; transition-delay: .05s; width:34px;height:110px;display:flex;align-items:center;justify-content:center; background:transparent; border:none; padding:0; z-index:50}
 .vol-pop:hover .vol-menu{opacity:1;pointer-events:auto;transition-delay: 0s}
 .vrange{width:110px;height:20px;transform:rotate(-90deg);transform-origin:center;}
 
 .quality{position:relative;}
-.quality .qmenu{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:8px;opacity:0;pointer-events:none;transition:opacity .12s ease; transition-delay: 1s; z-index:50}
+.quality .qmenu{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:3px;align-items:stretch;min-width:88px;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px;opacity:0;pointer-events:none;transition:opacity .06s ease; transition-delay: .02s; z-index:50;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 .quality:hover .qmenu{opacity:1;pointer-events:auto;transition-delay: 0s}
-.qitem{background:transparent;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;text-align:left}
-.qitem.active{background:#fff;color:#000;border-color:#fff}
+.qitem{background:transparent;border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:5px;padding:4px 6px;cursor:pointer;text-align:center;font-size:12px}
+.qitem.active{background:#38bdf8;color:#0b1220;border-color:#38bdf8}
+.rate-menu{position:relative;}
+.rate-menu .rmenu{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:3px;align-items:stretch;min-width:88px;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px;opacity:0;pointer-events:none;transition:opacity .06s ease; transition-delay: .02s; z-index:50;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.rate-menu:hover .rmenu{opacity:1;pointer-events:auto;transition-delay:0s}
+.ritem{background:transparent;border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:5px;padding:4px 6px;cursor:pointer;text-align:center;font-size:12px}
+.ritem.active{background:#38bdf8;color:#0b1220;border-color:#38bdf8}
 .mini-progress{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.18)}
 .mini-cur{height:100%;background:#fff}
+
+/* 分享弹窗 */
+.share-mask{position:absolute;inset:0;background:var(--overlay,rgba(0,0,0,.55));z-index:8;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+.share-modal{
+  width:min(520px,92%);
+  background:linear-gradient(135deg,
+    color-mix(in srgb, var(--bg-elev) 92%, var(--text) 8%),
+    color-mix(in srgb, var(--bg-elev) 88%, #000 12%));
+  color:var(--text);
+  border-radius:18px;
+  padding:18px 20px;
+  box-shadow:0 18px 52px rgba(0,0,0,.32);
+  border:1px solid color-mix(in srgb, var(--border) 70%, var(--text) 30%);
+  backdrop-filter:blur(12px);
+}
+.share-modal header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.share-modal .ttl{font-weight:800;font-size:17px;letter-spacing:.3px}
+.share-modal .close{background:var(--btn-bg);border:1px solid var(--btn-border);color:inherit;font-size:16px;cursor:pointer;border-radius:10px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;transition:background .12s ease}
+.share-modal .close:hover{background:var(--hover-bg)}
+.share-modal .body{display:flex;flex-direction:column;gap:16px}
+.share-modal .row{display:flex;align-items:center;gap:12px}
+.share-modal .row.dual{align-items:stretch}
+.share-modal .row.dual .cell{flex:1;display:flex;flex-direction:column;gap:8px;background:color-mix(in srgb, var(--bg-elev) 94%, var(--text) 6%);border:1px solid var(--border);border-radius:12px;padding:10px}
+.share-modal label{width:72px;color:var(--muted);font-size:13px;text-align:right;opacity:.9}
+.share-modal .row.dual label{width:auto;text-align:left;font-weight:700;letter-spacing:.1px;color:var(--text)}
+.share-modal .link{flex:1;display:flex;align-items:center;gap:10px;background:color-mix(in srgb, var(--bg-elev) 96%, var(--text) 4%);border:1px solid var(--border);border-radius:12px;padding:8px 10px}
+.share-modal .link input{flex:1;height:38px;border:none;background:transparent;border-radius:10px;padding:0 4px;color:var(--text);font-weight:600;user-select:text}
+.share-modal .link input:focus{outline:none}
+.share-modal .actions{display:flex;gap:8px}
+.share-modal .btn{background:var(--accent,#38bdf8);border:1px solid var(--accent,#38bdf8);color:#0b1220;font-weight:700;border-radius:10px;padding:8px 12px;cursor:pointer;transition:transform .08s ease,box-shadow .12s ease, background .12s ease}
+.share-modal .btn:hover{transform:translateY(-1px);box-shadow:0 10px 26px color-mix(in srgb, var(--accent) 28%, transparent)}
+.share-modal .btn.small{padding:6px 10px;font-size:12px}
+.share-modal .btn.ghost{background:var(--btn-bg);border:1px solid var(--btn-border);color:var(--text)}
+.share-modal .btn.ghost:hover{background:var(--hover-bg)}
+.share-modal .btn.on{background:var(--accent);border-color:var(--accent);color:#0b1220}
+.share-modal .muted{color:var(--muted);font-size:13px}
+.share-modal a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 
 /* 评论抽屉样式 */
 .comments-mask{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:5}

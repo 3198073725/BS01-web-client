@@ -56,6 +56,26 @@
               <option value="friends_only">仅好友可见</option>
             </select>
           </div>
+          <div class="field">
+            <label>邮箱验证</label>
+            <div class="inline">
+              <span class="email">{{ email || '-' }}</span>
+              <span class="pill" :class="{ on: isVerified }">{{ isVerified ? '已验证' : '未验证' }}</span>
+              <button v-if="!isVerified" class="btn" :disabled="verifySending || verifyCooldown>0 || !email" @click="sendVerify">
+                {{ verifyCooldown>0 ? `重新发送(${verifyCooldown}s)` : (verifySending ? '发送中...' : '发送验证邮件') }}
+              </button>
+            </div>
+          </div>
+          <div class="field full">
+            <label>邮箱改绑</label>
+            <div class="inline">
+              <input v-model.trim="newEmail" type="email" placeholder="输入新邮箱" />
+              <button class="btn" :disabled="changeSending || changeCooldown>0 || !newEmailValid" @click="sendEmailChange">
+                {{ changeCooldown>0 ? `已发送(${changeCooldown}s)` : (changeSending ? '发送中...' : '发送确认邮件') }}
+              </button>
+            </div>
+            <div class="hint">改绑后需要重新验证邮箱</div>
+          </div>
         </div>
         <div v-if="err" class="error">{{ err.detail || '保存失败' }}</div>
       </div>
@@ -91,7 +111,7 @@
 </template>
 
 <script>
-import { computed, reactive, watch, ref } from 'vue'
+import { computed, reactive, watch, ref, onUnmounted } from 'vue'
 import { api } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -110,6 +130,73 @@ export default {
     const err = ref(null)
     const saving = ref(false)
     const baseRef = ref({})
+    const email = computed(() => {
+      const u = (props.user || {})
+      const e = (u && u.email) ? String(u.email) : ''
+      return e
+    })
+    const isVerified = computed(() => Boolean((props.user || {}).is_verified))
+    const verifySending = ref(false)
+    const verifyCooldown = ref(0)
+    let verifyTimer = null
+    function startVerifyCooldown(sec = 60) {
+      try { if (verifyTimer) { clearInterval(verifyTimer); verifyTimer = null } } catch (_) {}
+      verifyCooldown.value = Math.max(0, Number(sec) || 0)
+      if (verifyCooldown.value > 0) {
+        verifyTimer = setInterval(() => {
+          if (verifyCooldown.value <= 1) {
+            verifyCooldown.value = 0
+            try { clearInterval(verifyTimer); verifyTimer = null } catch (_) {}
+          } else {
+            verifyCooldown.value = verifyCooldown.value - 1
+          }
+        }, 1000)
+      }
+    }
+    async function sendVerify() {
+      if (verifySending.value || verifyCooldown.value > 0 || !email.value) return
+      verifySending.value = true
+      try {
+        await api.sendVerifyEmail()
+        try { if (auth && auth.user) auth.user = { ...auth.user } } catch (_) {}
+        try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'success', message: '验证邮件已发送，请查收邮箱' } })) } catch (_) {}
+        startVerifyCooldown(60)
+      } catch (e) {
+        try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'error', message: (e && (e.detail || e.message)) || '发送失败' } })) } catch (_) {}
+      } finally { verifySending.value = false }
+    }
+
+    const newEmail = ref('')
+    const newEmailValid = computed(() => /.+@.+\..+/.test(String(newEmail.value || '')))
+    const changeSending = ref(false)
+    const changeCooldown = ref(0)
+    let changeTimer = null
+    function startChangeCooldown(sec = 60) {
+      try { if (changeTimer) { clearInterval(changeTimer); changeTimer = null } } catch (_) {}
+      changeCooldown.value = Math.max(0, Number(sec) || 0)
+      if (changeCooldown.value > 0) {
+        changeTimer = setInterval(() => {
+          if (changeCooldown.value <= 1) {
+            changeCooldown.value = 0
+            try { clearInterval(changeTimer); changeTimer = null } catch (_) {}
+          } else {
+            changeCooldown.value = changeCooldown.value - 1
+          }
+        }, 1000)
+      }
+    }
+    async function sendEmailChange() {
+      if (changeSending.value || changeCooldown.value > 0 || !newEmailValid.value) return
+      changeSending.value = true
+      try {
+        await api.emailChangeRequest(String(newEmail.value || ''))
+        try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'success', message: '确认邮件已发送，请到新邮箱完成改绑' } })) } catch (_) {}
+        startChangeCooldown(60)
+      } catch (e) {
+        try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'error', message: (e && (e.detail || e.message)) || '发送失败' } })) } catch (_) {}
+      } finally { changeSending.value = false }
+    }
+    onUnmounted(() => { try { if (verifyTimer) clearInterval(verifyTimer) } catch (_) {}; try { if (changeTimer) clearInterval(changeTimer) } catch (_) {} })
 
     function normalizeUser(u) {
       const nickname = (u?.nickname || '').trim()
@@ -350,7 +437,9 @@ export default {
     }
 
     return { form, err, saving, close, save, onPickAvatar, avatarPreview, initial, triggerPick, fileEl,
-             cropOpen, cropUrl, crop, cropImgStyle, onCropDown, confirmCrop, closeCrop }
+             cropOpen, cropUrl, crop, cropImgStyle, onCropDown, confirmCrop, closeCrop,
+             email, isVerified, verifySending, verifyCooldown, sendVerify,
+             newEmail, newEmailValid, changeSending, changeCooldown, sendEmailChange }
   }
 }
 </script>
@@ -374,6 +463,10 @@ export default {
 .avatar-wrap { width:64px; height:64px; border-radius:999px; overflow:hidden; background: var(--btn-border); display:flex; align-items:center; justify-content:center; }
 .avatar { width:100%; height:100%; object-fit: cover; display:block; }
 .avatar-fallback { color: var(--text); font-weight:700; }
+.inline { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.pill { display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border); color: var(--muted); font-size:12px; }
+.pill.on { background:#dcfce7; border-color:#bbf7d0; color:#166534; }
+.hint { color: var(--muted); font-size:12px; margin-top:6px; }
 
 .crop-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index: 11000; }
 .crop-modal { width: min(560px, calc(100vw - 32px)); background: var(--bg-elev); color: var(--text); border-radius:16px; box-shadow: 0 20px 60px rgba(0,0,0,.35); display:flex; flex-direction:column; overflow:hidden; }

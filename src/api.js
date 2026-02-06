@@ -208,6 +208,48 @@ export const api = {
   async register({ username, email, password, captcha = '' }) {
     return request('/api/users/register/', { method: 'POST', body: { username, email, password, captcha }, auth: false });
   },
+  // Content: tags & categories (public)
+  async contentTags({ q = '', page = 1, pageSize = 20 } = {}) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (page && Number(page) > 1) params.set('page', String(page));
+    if (pageSize) params.set('page_size', String(pageSize));
+    const qp = params.toString();
+    try {
+      return await request(`/api/content/tags/${qp ? `?${qp}` : ''}`, { auth: false });
+    } catch (e) {
+      if (e && e.status === 404) {
+        return { results: [], page: Number(page || 1), page_size: Number(pageSize || 20), total: 0, has_next: false };
+      }
+      throw e;
+    }
+  },
+  async contentCategories({ q = '', page = 1, pageSize = 50 } = {}) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (page && Number(page) > 1) params.set('page', String(page));
+    if (pageSize) params.set('page_size', String(pageSize));
+    const qp = params.toString();
+    try {
+      return await request(`/api/content/categories/${qp ? `?${qp}` : ''}`, { auth: false });
+    } catch (e) {
+      if (e && e.status === 404) {
+        return { results: [], page: Number(page || 1), page_size: Number(pageSize || 50), total: 0, has_next: false };
+      }
+      throw e;
+    }
+  },
+  async contentTagCreate(name) {
+    const body = { name: String(name || '') };
+    try {
+      return await request('/api/content/tags/', { method: 'POST', body });
+    } catch (e) {
+      if (e && e.status === 404) {
+        throw new ApiError({ status: 404, detail: '后端未开启标签创建接口，请稍后再试' });
+      }
+      throw e;
+    }
+  },
   async searchVideos({ page = 1, pageSize = 12, q = '', order = '' } = {}) {
     const params = new URLSearchParams();
     if (page && Number(page) > 1) params.set('page', String(page));
@@ -231,6 +273,8 @@ export const api = {
         favorited: Boolean(v.favorited ?? false),
         src: (v.hls_master_url || v.video_url || ''),
         thumbVtt: v.thumbnail_vtt_url || null,
+        category: v.category || null,
+        tags: Array.isArray(v.tags) ? v.tags : [],
       })) : [],
       page: Number(data?.page || page || 1),
       hasNext: Boolean(data?.has_next ?? false),
@@ -304,7 +348,20 @@ export const api = {
     if (Object.prototype.hasOwnProperty.call(partial, 'allow_comments')) body.allow_comments = !!partial.allow_comments
     if (Object.prototype.hasOwnProperty.call(partial, 'allow_download')) body.allow_download = !!partial.allow_download
     if (typeof partial.visibility === 'string' && ['public','unlisted','private'].includes(partial.visibility)) body.visibility = partial.visibility
+    if (Object.prototype.hasOwnProperty.call(partial, 'category_id')) body.category_id = (partial.category_id == null ? '' : String(partial.category_id))
+    if (Array.isArray(partial.tag_ids)) body.tag_ids = partial.tag_ids.map(String)
     return request(`/api/videos/${encodeURIComponent(id)}/`, { method: 'PATCH', body, auth: true })
+  },
+  async videoThumbnailPick(id, ts = 1) {
+    if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少视频ID' })
+    return request(`/api/videos/${encodeURIComponent(id)}/thumbnail/pick/`, { method: 'POST', body: { ts: Number(ts) || 1 }, auth: true })
+  },
+  async videoThumbnailUpload(id, file) {
+    if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少视频ID' })
+    if (!file) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少文件' })
+    const form = new FormData();
+    form.append('file', file);
+    return request(`/api/videos/${encodeURIComponent(id)}/thumbnail/upload/`, { method: 'POST', body: form, isForm: true, auth: true })
   },
   async userDetail(id) {
     if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少用户ID' })
@@ -329,7 +386,7 @@ export const api = {
       total: Number(data?.total || 0),
     };
   },
-  async favoritesList({ page = 1, pageSize = 12, userId = '' } = {}) {
+  async favorites({ page = 1, pageSize = 12, userId = '' } = {}) {
     const params = new URLSearchParams();
     if (page && Number(page) > 1) params.set('page', String(page));
     if (pageSize) params.set('page_size', String(pageSize));
@@ -342,6 +399,15 @@ export const api = {
       hasNext: Boolean(data?.has_next ?? false),
       total: Number(data?.total || 0),
     };
+  },
+  async favoritesList({ page = 1, pageSize = 12, userId = '' } = {}) {
+    return this.favorites({ page, pageSize, userId });
+  },
+  async retryTranscode(videoId) {
+    return request(`/api/videos/${videoId}/retry-transcode/`, { method: 'POST' });
+  },
+  async watchLaterToggle(videoId) {
+    return request('/api/interactions/watch-later/toggle/', { method: 'POST', body: { video_id: videoId } });
   },
   async watchLaterList({ page = 1, pageSize = 12, userId = '' } = {}) {
     const params = new URLSearchParams();
@@ -423,6 +489,12 @@ export const api = {
   },
   async sendVerifyEmail() {
     return request('/api/users/verify-email/request/', { method: 'POST' });
+  },
+  async emailChangeRequest(newEmail) {
+    return request('/api/users/email/change/request/', { method: 'POST', body: { new_email: newEmail } });
+  },
+  async emailChangeConfirm(token) {
+    return request('/api/users/email/change/confirm/', { method: 'POST', body: { token }, auth: false });
   },
   async contactSubmit({ type, name, email, subject, message }) {
     return request('/api/users/contact/submit/', { method: 'POST', body: { type, name, email, subject, message }, auth: false });
@@ -675,19 +747,26 @@ export const api = {
     return request('/api/notifications/clear/', { method: 'POST', body: {} })
   },
   // Videos list (public feed) - used for "我的/推荐"标签
-  async videosList({ page = 1, pageSize = 12, userId = '', order = '', q = '' } = {}) {
+  async videosList({ page = 1, pageSize = 12, userId = '', order = '', q = '', categoryId = '', tagIds = [], tagMatch = 'any' } = {}) {
     const params = new URLSearchParams();
     if (page && Number(page) > 1) params.set('page', String(page));
     if (pageSize) params.set('page_size', String(pageSize));
     if (userId) params.set('user_id', userId);
     if (order) params.set('order', order);
     if (q) params.set('q', q);
+    if (categoryId) params.set('category_id', categoryId);
+    if (Array.isArray(tagIds) && tagIds.length) {
+      params.set('tag_ids', tagIds.map(String).join(','));
+      if (tagMatch && (tagMatch === 'all' || tagMatch === 'any')) params.set('tag_match', tagMatch);
+    }
     const qp = params.toString();
     const data = await request(`/api/videos/list/${qp ? `?${qp}` : ''}`, { auth: true });
     // backend shape: { results: [{thumbnail_url,title,view_count}], page, total, has_next }
     return {
       items: Array.isArray(data?.results) ? data.results.map(v => ({
         id: v.id,
+        status: v.status || '',
+        transcodeError: v.transcode_error || '',
         cover: v.thumbnail_url || '',
         title: v.title || '',
         views: v.view_count ?? null,
@@ -696,10 +775,12 @@ export const api = {
         comments: v.comment_count ?? 0,
         author: v.author || null,
         publishedAt: v.published_at || v.created_at || null,
+        lowMp4: v.low_mp4_url || '',
         liked: Boolean(v.liked ?? false),
         favorited: Boolean(v.favorited ?? false),
         src: (v.hls_master_url || v.video_url || ''),
         thumbVtt: v.thumbnail_vtt_url || null,
+        category: v.category || null,
       })) : [],
       page: Number(data?.page || page || 1),
       hasNext: Boolean(data?.has_next ?? false),

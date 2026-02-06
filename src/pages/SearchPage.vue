@@ -19,12 +19,15 @@
         </div>
         <div v-else-if="items.length === 0" class="empty">暂无结果</div>
         <div v-else class="grid">
-          <div v-for="(it, idx) in items" :key="it.id || idx" class="card" @click="open(it)">
+          <div v-for="(it, idx) in items" :key="it.id || idx" class="card" @click="openAt(idx)">
             <div class="thumb">
               <img v-if="it.cover" :src="it.cover" alt="thumb" />
               <div v-else class="ph" />
             </div>
             <div class="title" :title="it.title || ' '">{{ it.title || ' ' }}</div>
+            <div class="tags" v-if="it && Array.isArray(it.tags) && it.tags.length">
+              <span class="tag" v-for="(t,i) in it.tags.slice(0,3)" :key="t.id || i">{{ t.name }}</span>
+            </div>
             <div class="meta">
               <span v-if="it.views != null">👁️ {{ fmt(it.views) }}</span>
               <span v-if="it.likes != null">❤️ {{ fmt(it.likes) }}</span>
@@ -81,12 +84,18 @@ export default {
       try { loading.value = true; await fetchPage(1) } finally { loading.value = false }
     }
     async function loadMore() { if (loadingMore.value) return; try { loadingMore.value = true; await fetchPage(page.value + 1) } finally { loadingMore.value = false } }
-    function open(it) { try { const id = it && (it.id || it.video_id); if (id) router.push({ name: 'video', params: { id } }) } catch (_) { void 0 } }
+    function openAt(idx) {
+      try {
+        const i = Number(idx)
+        const kw = String(q.value || '').trim()
+        router.push({ name: 'search-feed', query: { q: kw, i: String(isNaN(i) ? 0 : i) } })
+      } catch (_) { /* no-op */ }
+    }
 
     onMounted(async () => { await reload() })
     watch(() => route.query.q, async () => { await reload() })
 
-    return { q, items, loading, loadingMore, hasNext, loadMore, reload, open, err, fmt }
+    return { q, items, loading, loadingMore, hasNext, loadMore, reload, openAt, err, fmt }
   }
 }
 </script>

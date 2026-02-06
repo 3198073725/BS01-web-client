@@ -21,9 +21,19 @@
           </label>
         </div>
         <div class="title" :title="it.title || ' '">{{ it.title || ' ' }}</div>
+        <div class="tags" v-if="it && Array.isArray(it.tags) && it.tags.length">
+          <span class="tag" v-for="(t,i) in it.tags.slice(0,3)" :key="t.id || i">{{ t.name }}</span>
+        </div>
         <div class="meta">
           <span v-if="it.views != null">👁️ {{ format(it.views) }}</span>
           <span v-if="it.likes != null">❤️ {{ format(it.likes) }}</span>
+        </div>
+        <div v-if="showStatus" class="status">
+          <span :class="['badge', { fail: it.transcodeError || it.status==='banned' }]">
+            {{ statusText(it.status) || '状态未知' }}
+          </span>
+          <span v-if="it.transcodeError" class="err-text">原因：{{ it.transcodeError }}</span>
+          <button v-if="allowRetry && canRetry(it)" class="retry" @click.stop="$emit('retry', getId(it))">重试转码</button>
         </div>
       </div>
     </template>
@@ -40,8 +50,10 @@ export default {
     emptyText: { type: String, default: '暂无内容' },
     selectable: { type: Boolean, default: false },
     selectedIds: { type: Array, default: () => [] },
+    showStatus: { type: Boolean, default: false },
+    allowRetry: { type: Boolean, default: false },
   },
-  emits: ['toggle','open'],
+  emits: ['toggle','open','retry'],
   methods: {
     format(n) {
       const v = Number(n || 0)
@@ -67,6 +79,17 @@ export default {
         const id = this.getId(it)
         if (id) this.$emit('open', id)
       }
+    },
+    statusText(s) {
+      if (s === 'published') return '已发布'
+      if (s === 'processing') return '转码中'
+      if (s === 'draft') return '草稿'
+      if (s === 'banned') return '转码失败'
+      return s || ''
+    },
+    canRetry(it) {
+      const s = (it && (it.status || '')).toLowerCase()
+      return s === 'processing' || s === 'banned' || !!it?.transcodeError
     }
   }
 }
@@ -84,7 +107,13 @@ export default {
 .chk .box { width:18px; height:18px; border-radius:4px; border:1px solid var(--btn-border); background: var(--bg); display:inline-block; box-shadow: 0 1px 4px rgba(0,0,0,.2) }
 .card.selected .chk .box { background: var(--accent); border-color: var(--accent); }
 .title { padding:8px 10px 0; font-weight:600; color: var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tags { padding:6px 10px 0; display:flex; gap:6px; flex-wrap:wrap; }
+.tag { font-size:12px; color:#6b7280; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:999px; padding:2px 8px; }
 .meta { padding:6px 10px 10px; display:flex; gap:12px; color: var(--muted); font-size:12px; }
+.status { padding: 0 10px 10px; font-size:12px; color: var(--muted); display:flex; flex-direction:column; gap:6px; }
+.badge { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid var(--border); }
+.badge.fail { color:#b91c1c; border-color:#fca5a5; background:#fef2f2; }
+.retry { align-self:flex-start; padding:6px 10px; border-radius:8px; border:1px solid var(--btn-border); background:var(--bg); cursor:pointer; }
 
 /* skeleton */
 .skeleton .thumb { background: linear-gradient(90deg, rgba(0,0,0,.12), rgba(255,255,255,.06), rgba(0,0,0,.12)); background-size: 200% 100%; animation: sh 1.2s infinite; }

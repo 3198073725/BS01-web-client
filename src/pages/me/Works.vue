@@ -2,12 +2,25 @@
   <div>
     <div v-if="needLogin" class="empty">请先登录后查看我的作品</div>
     <template v-else>
+      <div v-if="isSelfWorks && !myVerified" class="notice warn">
+        邮箱未验证时，你的作品仅能保存为“审核中”，不会对外展示。请前往“编辑资料”完成邮箱验证。
+      </div>
       <div v-if="bulkManage" class="bulkbar">
         <span>已选 {{ selectedIds.length }} 项</span>
         <button class="btn" :disabled="!selectedIds.length || acting" @click="openBulkManage">批量设置</button>
         <button class="btn danger" :disabled="!selectedIds.length || acting" @click="openBulkManageForDelete">删除作品</button>
       </div>
-      <CardGrid :items="items" :loading="loading" :selectable="bulkManage" :selected-ids="selectedIds" @toggle="toggleSelect" @open="openEdit" />
+      <CardGrid
+        :items="items"
+        :loading="loading"
+        :selectable="bulkManage"
+        :selected-ids="selectedIds"
+        :show-status="true"
+        :allow-retry="isSelfWorks"
+        @toggle="toggleSelect"
+        @open="openEdit"
+        @retry="onRetryTranscode"
+      />
       <div v-if="!loading && err" class="error">
         <span>{{ err.detail || '加载失败' }}</span>
         <button class="btn" @click="retry">重试</button>
@@ -44,6 +57,7 @@ export default {
     const needLogin = ref(false)
     const userId = ref('') // 当前要查看的用户ID（可能是自己或他人）
     const myId = ref('')   // 自己的用户ID（用于判断是否可批量管理）
+    const myVerified = ref(true)
     const err = ref(null)
     const ui = useUiStore()
     const bulkManage = computed(() => ui.meBulkManage && myId.value && String(userId.value) === String(myId.value))
@@ -62,7 +76,7 @@ export default {
         userId.value = rid
         needLogin.value = false
         // 同时尝试拿到自己的ID，用于判断是否展示批量管理
-        try { const me = await api.me(); myId.value = me?.id || '' } catch (_) { myId.value = '' }
+        try { const me = await api.me(); myId.value = me?.id || ''; myVerified.value = !!me?.is_verified } catch (_) { myId.value = ''; myVerified.value = true }
         // 设置批量选择作用域，切换用户时清空旧选择
         ui.setMeSelectedScope(userId.value)
         return
@@ -71,6 +85,7 @@ export default {
       try {
         const me = await api.me()
         myId.value = me?.id || ''
+        myVerified.value = !!me?.is_verified
         userId.value = myId.value
         needLogin.value = !userId.value
       } catch (_) {
@@ -112,6 +127,20 @@ export default {
       }, () => {})
     }
     function openEdit(id) { try { router.push({ name: 'video-edit', params: { id } }) } catch (_) { /* no-op */ } }
+    const isSelfWorks = computed(() => myId.value && String(userId.value) === String(myId.value))
+    async function onRetryTranscode(id) {
+      if (!id || acting.value) return
+      try {
+        acting.value = true
+        await api.retryTranscode(id)
+        ui.showDialog('已重新提交转码，稍后刷新状态', 'success')
+        await fetchPage(1)
+      } catch (e) {
+        ui.showDialog((e && (e.detail || e.message)) || '重试失败', 'error')
+      } finally {
+        acting.value = false
+      }
+    }
     async function applyBulkSettings(partial) {
       if (!selectedIds.value.length) return
       const n = selectedIds.value.length
@@ -129,7 +158,7 @@ export default {
     watch(() => route.query.user_id, async () => { await init() })
     return { items, loading, hasNext, loadMore, loadingMore, needLogin, err, retry,
              bulkManage, selectedIds, toggleSelect, acting, dialogOpen,
-             openBulkManage, openBulkManageForDelete, applyBulkSettings, confirmBulkDelete, openEdit }
+             openBulkManage, openBulkManageForDelete, applyBulkSettings, confirmBulkDelete, openEdit, myVerified, isSelfWorks, onRetryTranscode }
   }
 }
 </script>
@@ -141,4 +170,6 @@ export default {
 .error { display:flex; gap:12px; align-items:center; justify-content:center; color: var(--danger); padding: 12px 0; }
 .bulkbar { display:flex; gap:12px; align-items:center; padding:8px 0; }
 .btn.danger { border-color: var(--danger); color: var(--danger); }
+.notice { padding:10px 12px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; color: var(--muted); }
+.notice.warn { background:#fffbea; border-color:#fde68a; color:#92400e; }
 </style>

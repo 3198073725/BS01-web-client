@@ -34,6 +34,47 @@
           <option value="private">私密</option>
         </select>
 
+        <label class="lab">分类</label>
+        <select v-model="categoryId">
+          <option value="">未选择</option>
+          <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+
+        <label class="lab">标签</label>
+        <div class="tag-editor">
+          <div class="tag-list">
+            <span class="tag-chip" v-for="t in selectedTags" :key="t.id">
+              {{ t.name }}
+              <button class="x" @click="removeTag(t)">×</button>
+            </span>
+          </div>
+          <input
+            v-model.trim="tagInput"
+            type="text"
+            placeholder="输入以搜索标签，回车新增"
+            @input="onTagInput"
+            @keydown.enter.prevent="onTagEnter"
+            :disabled="selectedTags.length >= 3"
+          />
+          <ul v-if="showTagSuggest && tagOptions.length" class="tag-suggest">
+            <li v-for="opt in tagOptions" :key="opt.id" @click="addTag(opt)">{{ opt.name }}</li>
+          </ul>
+          <div class="tag-hint">最多选择 3 个标签</div>
+        </div>
+
+        <label class="lab">封面</label>
+        <div class="cover-tools">
+          <div class="row">
+            <input class="ts" v-model.trim="thumbTs" type="number" min="0" step="1" placeholder="时间点(秒)" />
+            <button class="btn" :disabled="thumbPicking" @click="pickThumb">{{ thumbPicking ? '生成中...' : '从视频截取' }}</button>
+          </div>
+          <div class="row">
+            <input type="file" accept="image/png,image/jpeg,image/webp" @change="onCoverFileChange" />
+          </div>
+          <div class="hint">建议 16:9 比例，至少 480×270 像素</div>
+          <div v-if="coverMsg" class="ok">{{ coverMsg }}</div>
+        </div>
+
         <div class="actions">
           <button class="btn" @click="goPreview">预览</button>
           <button class="btn primary" :disabled="saving" @click="save">{{ saving ? '保存中...' : '保存' }}</button>
@@ -63,6 +104,16 @@ const description = ref('')
 const allowComments = ref(true)
 const allowDownload = ref(false)
 const visibility = ref('public')
+const categoryId = ref('')
+const categories = ref([])
+const selectedTags = ref([]) // [{id,name}]
+const tagInput = ref('')
+const tagOptions = ref([])
+const showTagSuggest = ref(false)
+let tagTimer = null
+const thumbTs = ref('')
+const thumbPicking = ref(false)
+const coverMsg = ref('')
 
 async function load() {
   loading.value = true
@@ -75,10 +126,94 @@ async function load() {
     allowComments.value = (d?.allow_comments !== undefined) ? !!d.allow_comments : true
     allowDownload.value = (d?.allow_download !== undefined) ? !!d.allow_download : false
     visibility.value = (typeof d?.visibility === 'string' && d.visibility) ? d.visibility : 'public'
+    categoryId.value = (d?.category && d.category.id) ? String(d.category.id) : ''
+    selectedTags.value = Array.isArray(d?.tags) ? d.tags.map(t => ({ id: String(t.id), name: t.name })) : []
   } catch (e) {
     err.value = e
   } finally {
     loading.value = false
+  }
+}
+
+async function loadCategories() {
+  try {
+    const r = await api.contentCategories({ pageSize: 100 })
+    categories.value = Array.isArray(r?.results) ? r.results : []
+  } catch { categories.value = [] }
+}
+
+function onTagInput() {
+  const q = tagInput.value
+  if (selectedTags.value.length >= 3) { showTagSuggest.value = false; tagOptions.value = []; return }
+  if (tagTimer) clearTimeout(tagTimer)
+  tagTimer = setTimeout(async () => {
+    if (!q) { tagOptions.value = []; showTagSuggest.value = false; return }
+    try {
+      const r = await api.contentTags({ q, pageSize: 10 })
+      const opts = Array.isArray(r?.results) ? r.results : []
+      // 过滤掉已选择的
+      const chosen = new Set(selectedTags.value.map(t => t.id))
+      tagOptions.value = opts.filter(o => !chosen.has(String(o.id))).map(o => ({ id: String(o.id), name: o.name }))
+      showTagSuggest.value = tagOptions.value.length > 0
+    } catch { showTagSuggest.value = false; tagOptions.value = [] }
+  }, 200)
+}
+
+function addTag(opt) {
+  if (selectedTags.value.length >= 3) return
+  const exists = selectedTags.value.some(t => t.id === String(opt.id))
+  if (!exists) selectedTags.value.push({ id: String(opt.id), name: opt.name })
+  tagInput.value = ''
+  tagOptions.value = []
+  showTagSuggest.value = false
+}
+
+function removeTag(t) {
+  selectedTags.value = selectedTags.value.filter(x => x.id !== t.id)
+}
+
+function onTagEnter() {
+  const name = tagInput.value.trim()
+  if (!name || selectedTags.value.length >= 3) return
+  if (tagOptions.value.length) { addTag(tagOptions.value[0]); return }
+  // 无候选则创建新标签
+  (async () => {
+    try {
+      const t = await api.contentTagCreate(name)
+      if (t && t.id) addTag({ id: String(t.id), name: t.name })
+    } catch (_) { /* ignore */ }
+  })()
+}
+
+async function pickThumb() {
+  coverMsg.value = ''
+  const ts = Math.max(0, Number(thumbTs.value || 0))
+  try {
+    thumbPicking.value = true
+    const r = await api.videoThumbnailPick(vid.value, ts)
+    if (r && r.thumbnail_url) {
+      detail.value.thumbnail_url = r.thumbnail_url
+      coverMsg.value = '封面已更新'
+    }
+  } catch (e) {
+    err.value = e
+  } finally { thumbPicking.value = false }
+}
+
+async function onCoverFileChange(ev) {
+  coverMsg.value = ''
+  try {
+    const file = ev && ev.target && ev.target.files && ev.target.files[0]
+    if (!file) return
+    const r = await api.videoThumbnailUpload(vid.value, file)
+    if (r && r.thumbnail_url) {
+      detail.value.thumbnail_url = r.thumbnail_url
+      coverMsg.value = '封面已更新'
+    }
+    // reset input
+    try { ev.target.value = '' } catch (_) { /* no-op */ }
+  } catch (e) {
+    err.value = e
   }
 }
 
@@ -92,6 +227,8 @@ async function save() {
       allow_comments: !!allowComments.value,
       allow_download: !!allowDownload.value,
       visibility: visibility.value,
+      category_id: categoryId.value || '',
+      tag_ids: selectedTags.value.map(t => t.id),
     })
     // 保存成功后返回推荐页
     router.push('/')
@@ -108,6 +245,7 @@ function goPreview() {
 }
 
 onMounted(load)
+onMounted(loadCategories)
 </script>
 
 <style scoped>
@@ -125,4 +263,18 @@ input, textarea, select { padding: 10px 12px; border: 1px solid var(--border); b
 .loading { color: var(--muted); }
 .error { color: var(--danger); }
 @media (max-width: 860px) { .card { grid-template-columns: 1fr; } }
+
+.tag-editor { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.tag-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+.tag-chip .x { background: transparent; border: none; cursor: pointer; color: var(--muted); }
+.tag-suggest { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; margin-top: 4px; list-style: none; padding: 4px; z-index: 10; max-height: 180px; overflow: auto; }
+.tag-suggest li { padding: 6px 8px; cursor: pointer; }
+.tag-suggest li:hover { background: rgba(0,0,0,0.05); }
+.tag-hint { color: var(--muted); font-size: 12px; }
+
+.cover-tools { display:flex; flex-direction:column; gap:8px; }
+.cover-tools .row { display:flex; gap:8px; align-items:center; }
+.cover-tools .ts { width: 120px; }
+.cover-tools .hint { color: var(--muted); font-size:12px; }
 </style>
