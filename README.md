@@ -1,24 +1,62 @@
-# web-client
+# VidSprout Web Client | 沉浸式视频交互体验
 
-## Project setup
-```
+VidSprout Web 端是面向桌面用户的核心展示平台，致力于提供如丝般顺滑的视频浏览、交互与播放体验。基于 Vue 3 + Vite 的现代化架构，实现了高性能的内容渲染与实时互动。
+
+## 🌈 产品特性
+
+- **沉浸式播放器**: 自研/深度定制的 HTML5 播放器，支持 DASH/HLS 流式传输，具备自动码率切换功能。
+- **Feed 流交互**: 类社交媒体的无限滚动视频流，支持即时点赞、互动评论。
+- **响应式设计**: 完美适配从 13 寸笔记本到 4K 大屏显示器，确保视觉一致性。
+- **极致性能**: 利用 Vite 极速构建，配合路由懒加载与组件按需引入，首屏加载毫秒级响应。
+
+## 🧱 核心模块
+
+### 1. 视频探索广场 (Discovery)
+- **多维推荐**: 基于分类、标签和热度的视频分发。
+- **动态分类**: 顶部快捷导航，支持按频道筛选内容。
+
+### 2. 播放详情页 (Video Detail)
+- **交互矩阵**: 包含稍后再看、收藏夹、分享、三连互动等核心功能。
+- **实时评论**: 嵌套式评论系统，支持实时提交与排序切换。
+- **推荐侧边栏**: 相关视频精准推荐，引导用户持续观看。
+
+### 3. 用户生态 (User Ecosystem)
+- **个人动态**: 个人作品集、关注者列表、粉丝墙。
+- **历史管理**: 云端同步的播放历史与稍后再看列表。
+
+## 🛠 技术栈
+
+- **核心框架**: [Vue 3](https://v3.vuejs.org/) (Composition API)
+- **构建引擎**: [Vite](https://vitejs.dev/)
+- **状态管理**: Pinia (轻量化、类型安全)
+- **UI 体系**: Element Plus + Tailwind CSS (原子化 CSS 布局)
+- **流媒体引擎**: Shaka Player / Hls.js
+
+## 📦 快速开始
+
+### 1. 环境准备
+- Node.js 18+
+- pnpm 或 npm
+
+### 2. 安装与运行
+```bash
+# 安装依赖
 npm install
+
+# 启动开发服务器
+npm run dev
 ```
 
-### Compiles and hot-reloads for development
-```
-npm run serve
-```
-
-### Compiles and minifies for production
-```
+### 3. 构建生产环境
+```bash
 npm run build
 ```
 
-### Lints and fixes files
-```
-npm run lint
-```
+## 🏗 开发规范
 
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+- **组件化**: 严格执行 UI 组件与业务组件的分离。
+- **样式**: 使用 CSS 变量管理品牌主题色（主色：#fb7299）。
+- **资产**: 图片等静态资源优先使用 SVG 或 WebP 格式。
+
+---
+*VidSprout Web - 见证每一个精彩瞬间*

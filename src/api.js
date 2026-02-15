@@ -746,6 +746,30 @@ export const api = {
   async notificationsClear() {
     return request('/api/notifications/clear/', { method: 'POST', body: {} })
   },
+
+  // System announcements (global system messages)
+  async announcementsList({ page = 1, pageSize = 10, includeInactive = false } = {}) {
+    const params = new URLSearchParams();
+    if (page && Number(page) > 1) params.set('page', String(page));
+    if (pageSize) params.set('page_size', String(pageSize));
+    if (includeInactive) params.set('include_inactive', '1');
+    const qp = params.toString();
+    return request(`/api/notifications/announcements/${qp ? `?${qp}` : ''}`)
+  },
+  async announcementsUnreadCount() {
+    return request('/api/notifications/announcements/unread-count/')
+  },
+  async announcementsLatestUnread() {
+    return request('/api/notifications/announcements/latest-unread/')
+  },
+  async announcementDetail(id) {
+    if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少公告ID' })
+    return request(`/api/notifications/announcements/${encodeURIComponent(id)}/`)
+  },
+  async announcementMarkRead(id) {
+    if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少公告ID' })
+    return request(`/api/notifications/announcements/${encodeURIComponent(id)}/read/`, { method: 'POST', body: {} })
+  },
   // Videos list (public feed) - used for "我的/推荐"标签
   async videosList({ page = 1, pageSize = 12, userId = '', order = '', q = '', categoryId = '', tagIds = [], tagMatch = 'any' } = {}) {
     const params = new URLSearchParams();

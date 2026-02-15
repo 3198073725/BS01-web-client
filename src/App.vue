@@ -28,6 +28,7 @@ const dlgTitle = computed(() => {
   const t = String(ui.dialogType || 'info')
   if (t === 'error') return '错误'
   if (t === 'success') return '成功'
+  if (t === 'system') return '系统通知'
   if (t === 'warn') return '注意'
   return '提示'
 })
