@@ -1,7 +1,26 @@
 // 简易 API 客户端（基于 fetch），支持 JWT 与统一错误解析，可在运行时切换后端地址
-// 默认基址：优先 env，再次用当前页面 hostname + :8000，最后回退 localhost
-let API_BASE = process.env.VUE_APP_API_BASE
-  || (typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://localhost:8000');
+// 默认基址：
+// - 优先 VUE_APP_API_BASE
+// - 否则将 web/admin/mobile.* 自动映射为 api.*
+// - 端口：如果页面是 dev server 端口（如 8080/8082/5173），API 走 :8000；如果是 80/无端口，则不显式拼接端口
+function resolveApiBase() {
+  const fromEnv = process.env.VUE_APP_API_BASE;
+  if (fromEnv && typeof fromEnv === 'string') return fromEnv.replace(/\/$/, '');
+  try {
+    if (typeof window === 'undefined' || !window.location) return 'http://localhost:8000';
+    const proto = window.location.protocol || 'http:';
+    const host = window.location.hostname || '127.0.0.1';
+    const apiHost = host.replace(/^(admin|web|mobile)\./, 'api.');
+    const port = window.location.port || '';
+    const isDefaultPort = !port || port === '80';
+    const apiPort = isDefaultPort ? '' : ':8000';
+    return `${proto}//${apiHost}${apiPort}`;
+  } catch (_) {
+    return 'http://localhost:8000';
+  }
+}
+
+let API_BASE = resolveApiBase();
 
 class ApiError extends Error {
   constructor(props = {}) {
