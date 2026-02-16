@@ -8,13 +8,10 @@ function resolveApiBase() {
   if (fromEnv && typeof fromEnv === 'string') return fromEnv.replace(/\/$/, '');
   try {
     if (typeof window === 'undefined' || !window.location) return 'http://localhost:8000';
-    const proto = window.location.protocol || 'http:';
-    const host = window.location.hostname || '127.0.0.1';
-    const apiHost = host.replace(/^(admin|web|mobile)\./, 'api.');
-    const port = window.location.port || '';
-    const isDefaultPort = !port || port === '80';
-    const apiPort = isDefaultPort ? '' : ':8000';
-    return `${proto}//${apiHost}${apiPort}`;
+    // 默认同域（Nginx 将 /api/ 反代到后端），避免依赖 api 子域名解析，且可避免 CORS。
+    const origin = window.location.origin;
+    if (origin && typeof origin === 'string') return origin.replace(/\/$/, '');
+    return 'http://localhost:8000';
   } catch (_) {
     return 'http://localhost:8000';
   }
