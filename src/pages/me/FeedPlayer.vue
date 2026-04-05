@@ -19,8 +19,10 @@
           :meta-favorites="item.favorites || 0"
           :meta-liked="item.liked || false"
           :meta-favorited="item.favorited || false"
+          :comments-open="commentsOpen"
           @request-next="onRequestNext"
           @request-prev="onRequestPrev"
+          @toggle-comments="commentsOpen = $event.open"
         />
         <div v-else class="placeholder"><div class="box" /></div>
       </div>
@@ -51,6 +53,7 @@ const loading = ref(false)
 const feedRef = ref(null)
 const itemRefs = ref([])
 const currentIndex = ref(0)
+const commentsOpen = ref(false)
 const page = ref(1)
 const hasNext = ref(true)
 let aborted = false
@@ -96,6 +99,7 @@ function mapItem(v = {}) {
 
 function apiForSource() {
   const s = source.value
+  if (s === 'preview') return null // 预览模式不走列表API，直接取单条详情
   if (s === 'favorites') return api.favoritesList
   if (s === 'history') return api.historyList
   if (s === 'watch-later') return api.watchLaterList
@@ -103,8 +107,47 @@ function apiForSource() {
   return api.likesList
 }
 
+async function loadPreview() {
+  // 预览模式：直接拉取单条视频详情
+  if (!targetId.value) return
+  try {
+    loading.value = true
+    const d = await api.videoDetail(String(targetId.value))
+    if (d && d.id) {
+      items.value = [{
+        id: d.id,
+        cover: d.thumbnail_url || '',
+        title: d.title || '',
+        views: d.view_count ?? null,
+        likes: d.like_count ?? null,
+        favorites: d.favorite_count ?? null,
+        comments: d.comment_count ?? null,
+        author: d.author || null,
+        publishedAt: d.published_at || d.created_at || null,
+        thumbVtt: d.thumb_vtt || null,
+        liked: !!d.liked,
+        favorited: !!d.favorited,
+        src: d.hls_master_url || d.video_url || '',
+      }]
+      displaySrc.value = []
+      try { loaded.clear() } catch (_) { /* no-op */ }
+      hasNext.value = false
+      nextTick(() => {
+        currentIndex.value = 0
+        updatePreload(0)
+      })
+    }
+  } catch (_) { /* no-op */ }
+  finally { loading.value = false }
+}
+
 async function load(p = 1) {
   if (loading.value) return; loading.value = true
+  // 预览模式单独处理
+  if (source.value === 'preview') {
+    await loadPreview()
+    return
+  }
   try {
     const fn = apiForSource()
     // 与“我的”列表保持一致，使用 page_size 12，避免接口缓存策略差异
@@ -214,7 +257,12 @@ function onRequestPrev() { try { goTo(currentIndex.value - 1) } catch (_) { /* n
 onMounted(() => {
   const initIdx = Number(route.query.i || '0')
   currentIndex.value = Number.isNaN(initIdx) ? 0 : initIdx
-  load(1)
+  // 预览模式特殊处理
+  if (source.value === 'preview') {
+    loadPreview()
+  } else {
+    load(1)
+  }
 })
 watch(() => route.query.i, (i) => {
   const idx = Number(i || 0)
@@ -231,7 +279,12 @@ watch(() => [source.value, route.query.id], ([s, id]) => {
   try { loaded.clear() } catch (_) { /* no-op */ }
   displaySrc.value = []
   items.value = []
-  load(1)
+  // 预览模式单独处理
+  if (source.value === 'preview') {
+    loadPreview()
+  } else {
+    load(1)
+  }
 })
 </script>
 

@@ -19,6 +19,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="footer-links">
+          <router-link v-if="showApiBase" to="/api" class="footer-link">API地址</router-link>
           <router-link to="/about" class="footer-link">关于</router-link>
           <router-link to="/terms" class="footer-link">条款</router-link>
           <router-link to="/contact" class="footer-link">联系</router-link>
@@ -82,10 +83,12 @@
                            :meta-favorites="item.favorites || 0"
                            :meta-liked="item.liked || false"
                            :meta-favorited="item.favorited || false"
+                           :comments-open="commentsOpen"
                            @request-next="onRequestNext"
                            @request-prev="onRequestPrev"
                            @update-like="onUpdateLike"
                            @update-favorite="onUpdateFavorite"
+                           @toggle-comments="commentsOpen = $event.open"
               />
               <div v-else class="placeholder"><div class="box" /></div>
             </div>
@@ -114,11 +117,22 @@ import { api } from '@/api'
 import { useHomePage } from './HomePage.logic.js'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useConfigStore } from '@/stores/config'
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
+
+const logoSrc = computed(() => {
+  const dark = theme.value === 'dark'
+  return dark ? '/img/vidsprout-logo.svg' : '/img/logo-dark.svg'
+})
+
+const auth = useAuthStore()
+const configStore = useConfigStore()
+
+const showApiBase = computed(() => configStore.get('show_api_base', true))
 
 const {
   kw, placeholder, items, displaySrc,
-  theme, toggleTheme, logoSrc,
+  theme, toggleTheme,
   feedRef, setItemRef, doSearch,
   goTo, currentIndex,
   reloadFeed,
@@ -126,9 +140,11 @@ const {
   searchRef, showHistory, historyItems, onFocusSearch, onBlurSearch, onSearchMouseDown, pickHistory, removeHistoryItem, clearSearchHistory,
 } = useHomePage()
 
+// 评论区全局状态（跨视频同步）
+const commentsOpen = ref(false)
+
 // auth store
 const router = useRouter()
-const auth = useAuthStore()
 const user = computed(() => auth.user)
 function goLogin() { /* 沿用现有登录弹窗 */ showLogin.value = true }
 
@@ -210,6 +226,7 @@ const showChild = computed(() => inMe.value
   || route.path.startsWith('/following')
   || route.path.startsWith('/friends')
   || route.path.startsWith('/play')
+  || route.path.startsWith('/api')
   || route.path.startsWith('/about')
   || route.path.startsWith('/terms')
   || route.path.startsWith('/contact')

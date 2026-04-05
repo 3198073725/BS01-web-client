@@ -29,8 +29,8 @@
               <button class="btn code-btn" :disabled="countdown>0 || loading" @click="sendCode">{{ countdown>0 ? `${countdown}s` : '获取验证码' }}</button>
             </div>
             <div class="err-line" aria-live="polite">{{ showCodeErr ? codeErr : '' }}</div>
-            <button class="btn primary" :disabled="loading" @click="submitCodeLogin">{{ loading? '处理中...' : '登录/注册' }}</button>
-            <div class="agreements">登录或注册即代表同意 <a href="#">用户协议</a> 和 <a href="#">隐私政策</a></div>
+            <button class="btn primary" :disabled="loading" @click="submitCodeLogin">{{ loading? '处理中...' : (allowRegister ? '登录/注册' : '登录') }}</button>
+            <div class="agreements">{{ allowRegister ? '登录或注册即代表同意 ' : '登录即代表同意 ' }}<a href="#">用户协议</a> 和 <a href="#">隐私政策</a></div>
           </div>
           <div v-else class="panel">
             <div class="row">
@@ -51,8 +51,11 @@
 </template>
 
 <script setup>
+import { useConfigStore } from '@/stores/config'
 import { useLoginModal } from './LoginModal.logic.js'
 const emit = defineEmits(['close', 'logged-in'])
+const configStore = useConfigStore()
+const allowRegister = computed(() => configStore.get('allow_register', true))
 const {
   tab, email, emailCode, emailErr, codeErr, username, password, loading, countdown, qrSrc,
   close, onEmailBlur, onCodeBlur, onUsernameBlur, onPasswordBlur,

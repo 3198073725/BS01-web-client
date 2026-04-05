@@ -18,8 +18,10 @@
                      :meta-favorites="item.favorites || 0"
                      :meta-liked="item.liked || false"
                      :meta-favorited="item.favorited || false"
+                     :comments-open="commentsOpen"
                      @request-next="onRequestNext"
                      @request-prev="onRequestPrev"
+                     @toggle-comments="commentsOpen = $event.open"
         />
         <div v-else class="placeholder"><div class="box" /></div>
       </div>
@@ -41,6 +43,7 @@ const loading = ref(false)
 const feedRef = ref(null)
 const itemRefs = ref([])
 const currentIndex = ref(0)
+const commentsOpen = ref(false)
 const router = useRouter()
 const route = useRoute()
 let aborted = false

@@ -1,5 +1,12 @@
 <template>
-  <router-view />
+  <div v-if="isMaintenance" class="maintenance-overlay">
+    <div class="maintenance-content">
+      <div class="icon">🚧</div>
+      <h1>系统维护中</h1>
+      <p>为了提供更好的服务，系统正在进行升级维护，请稍后再试。</p>
+    </div>
+  </div>
+  <router-view v-else />
   <transition name="fade">
     <div v-if="ui.dialogOpen" class="sysdlg-mask" @click="ui.hideDialog()"></div>
   </transition>
@@ -21,9 +28,15 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useUiStore } from '@/stores/ui'
+import { useConfigStore } from '@/stores/config'
+
 const ui = useUiStore()
+const configStore = useConfigStore()
+
+const isMaintenance = computed(() => configStore.get('maintenance_mode', false))
+
 const dlgTitle = computed(() => {
   const t = String(ui.dialogType || 'info')
   if (t === 'error') return '错误'
@@ -100,4 +113,28 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 .pop-enter-from,.pop-leave-to{transform:translate(-50%, -8px);opacity:0}
 .fade-enter-active,.fade-leave-active{transition:opacity .12s ease}
 .fade-enter-from,.fade-leave-to{opacity:0}
+
+.maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.maintenance-content .icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+.maintenance-content h1 {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+.maintenance-content p {
+  color: var(--muted);
+  max-width: 300px;
+  margin: 0 auto;
+}
 </style>

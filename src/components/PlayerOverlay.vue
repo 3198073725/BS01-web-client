@@ -24,18 +24,20 @@
       </button>
       <button class="btn follow" v-if="canFollow && !following" @click.stop="toggleFollow" :disabled="busyFollow" title="关注">关注</button>
       <button class="icon" :class="{ on: liked }" @click.stop="toggleLike" :disabled="busyLike" title="点赞">
-        ❤️
+        <svg class="svg-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
         <span class="cnt">{{ likeCount }}</span>
       </button>
       <button class="icon" @click.stop="openComments" title="评论">
-        💬
+        <svg class="svg-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span class="cnt">{{ comments }}</span>
       </button>
       <button class="icon" :class="{ on: favorited }" @click.stop="toggleFavorite" :disabled="busyFav" title="收藏">
-        ⭐
+        <svg class="svg-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
         <span class="cnt">{{ favoriteCount }}</span>
       </button>
-      <button class="icon" @click.stop="share" title="分享">🔗</button>
+      <button class="icon" @click.stop="share" title="分享">
+        <svg class="svg-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg>
+      </button>
     </div>
   </div>
 </template>
@@ -256,7 +258,8 @@ function share() {
 .title{background:rgba(0,0,0,.35);color:#fff;padding:6px 10px;border-radius:8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;line-clamp:2;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .tag{font-size:12px;color:#f3f4f6;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:2px 8px}
-.icon{background:rgba(0,0,0,.35);border:none;color:#fff;border-radius:12px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;cursor:pointer}
-.icon .cnt{display:block;margin-top:4px;font-size:12px}
+.icon{background:rgba(0,0,0,.35);border:none;color:#fff;border-radius:12px;width:48px;height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:2px}
+.icon .svg-icon{width:22px;height:22px}
+.icon .cnt{font-size:12px;line-height:1}
 .btn.follow{margin-left:6px;background:#ff2e63;border:none;color:#fff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>

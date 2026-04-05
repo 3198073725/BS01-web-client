@@ -194,6 +194,10 @@ onMounted(() => { loadCategories() })
 .row{display:flex;flex-direction:column;gap:6px;margin:10px 0}
 .row label{font-size:13px;color:var(--muted)}
 .row input[type="text"], .row textarea{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-elev);color:var(--text);outline:none}
+.row textarea{resize:none}
+/* file input and select dark mode styling */
+.row input[type="file"], .row select{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-elev);color:var(--text);outline:none;width:100%;max-width:100%;box-sizing:border-box}
+.row input[type="file"]::-webkit-file-upload-button{background:var(--btn-bg);border:1px solid var(--btn-border);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;margin-right:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hint{font-size:12px;color:var(--muted)}
 .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
 .btn{background:var(--btn-bg);border:1px solid var(--btn-border);color:var(--text);border-radius:10px;padding:8px 14px;cursor:pointer}

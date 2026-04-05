@@ -241,7 +241,8 @@ async function save() {
 }
 
 function goPreview() {
-  router.push({ name: 'video', params: { id: vid.value } })
+  // 使用 FeedPlayer 样式预览，与历史/喜欢/收藏一致
+  router.push({ name: 'feed-player', params: { source: 'preview' }, query: { id: vid.value } })
 }
 
 onMounted(load)
@@ -256,6 +257,8 @@ onMounted(loadCategories)
 .right { display: flex; flex-direction: column; gap: 8px; }
 .lab { font-size: 13px; color: var(--muted); }
 input, textarea, select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; }
+input[type="file"] { padding: 8px 10px; width: 100%; max-width: 100%; box-sizing: border-box; }
+input[type="file"]::-webkit-file-upload-button { background: var(--btn-bg); border: 1px solid var(--btn-border); color: var(--text); border-radius: 6px; padding: 6px 12px; cursor: pointer; margin-right: 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .btn { background: var(--btn-bg); border: 1px solid var(--btn-border); color: var(--text); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
 .btn.primary { background: var(--accent-bg, #2563eb); border-color: transparent; color: #fff; }
@@ -276,5 +279,8 @@ input, textarea, select { padding: 10px 12px; border: 1px solid var(--border); b
 .cover-tools { display:flex; flex-direction:column; gap:8px; }
 .cover-tools .row { display:flex; gap:8px; align-items:center; }
 .cover-tools .ts { width: 120px; }
+.cover-tools .ts::-webkit-outer-spin-button,
+.cover-tools .ts::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cover-tools .ts[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cover-tools .hint { color: var(--muted); font-size:12px; }
 </style>

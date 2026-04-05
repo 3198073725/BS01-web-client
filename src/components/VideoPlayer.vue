@@ -122,6 +122,49 @@
               <span v-else class="muted">作者未开启下载</span>
             </div>
           </div>
+          <div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;">
+            <div class="cell full">
+              <button class="btn small danger" :disabled="reportBusy" @click="openReportModal">
+                <span v-if="reportBusy">举报中...</span>
+                <span v-else>🚩 举报视频</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- Report Modal -->
+  <transition name="fade">
+    <div v-if="reportOpen" class="share-mask" @click.self="closeReport">
+      <div class="share-modal">
+        <header>
+          <div class="ttl">举报视频</div>
+          <button class="close" @click="closeReport">✕</button>
+        </header>
+        <div class="body">
+          <div class="row">
+            <label>举报原因</label>
+            <select v-model="reportReason" class="report-select">
+              <option value="spam">垃圾广告/刷屏</option>
+              <option value="inappropriate">色情/暴力/不适内容</option>
+              <option value="copyright">侵犯版权</option>
+              <option value="harassment">人身攻击/骚扰</option>
+              <option value="misinformation">虚假信息</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <label>详细说明（可选）</label>
+            <textarea v-model="reportDesc" placeholder="请描述举报原因..." rows="3" class="report-textarea"></textarea>
+          </div>
+          <div class="row" style="margin-top:16px;">
+            <button class="btn primary" :disabled="reportBusy || !reportReason" @click="submitReport" style="width:100%;">
+              {{ reportBusy ? '提交中...' : '提交举报' }}
+            </button>
+          </div>
+          <p v-if="reportError" class="err" style="color:#dc2626;margin-top:8px;font-size:14px;">{{ reportError }}</p>
         </div>
       </div>
     </div>
@@ -154,8 +197,10 @@ const props = defineProps({
   metaLiked: { type: Boolean, default: false },
   metaFavorited: { type: Boolean, default: false },
   commentsAllowed: { type: Boolean, default: true },
+  // 评论区开关状态（从父组件同步）
+  commentsOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['request-next', 'request-prev', 'error', 'update-like', 'update-favorite', 'update-comments', 'share'])
+const emit = defineEmits(['request-next', 'request-prev', 'error', 'update-like', 'update-favorite', 'update-comments', 'share', 'toggle-comments'])
 
 const wrap = ref(null)
 const video = ref(null)
@@ -202,6 +247,50 @@ const shareOpen = ref(false)
 const shareBusy = ref(false)
 const watchLaterSaved = ref(false)
 const downloadUrl = ref('')
+
+// --- 举报弹窗 ---
+const reportOpen = ref(false)
+const reportBusy = ref(false)
+const reportReason = ref('other')
+const reportDesc = ref('')
+const reportError = ref('')
+
+function openReportModal() {
+  if (!user.value) { ui.showDialog('请先登录', 'warn'); return }
+  // 检查是否是自己的视频
+  try {
+    if (props.metaAuthor && user.value && String(props.metaAuthor.id) === String(user.value.id)) {
+      ui.showDialog('不能举报自己发布的视频', 'warn')
+      return
+    }
+  } catch (_) { /* no-op */ }
+  reportOpen.value = true
+  reportReason.value = 'other'
+  reportDesc.value = ''
+  reportError.value = ''
+}
+function closeReport() { reportOpen.value = false }
+
+async function submitReport() {
+  if (!props.videoId || reportBusy.value) return
+  if (!reportReason.value) { reportError.value = '请选择举报原因'; return }
+  reportBusy.value = true
+  reportError.value = ''
+  try {
+    await api.reportCreate({
+      targetType: 'video',
+      targetId: props.videoId,
+      reasonCode: reportReason.value,
+      description: reportDesc.value
+    })
+    ui.showDialog('举报已提交，我们会尽快处理', 'success')
+    closeReport()
+  } catch (e) {
+    reportError.value = (e && (e.detail || e.message)) || '举报失败，请稍后重试'
+  } finally {
+    reportBusy.value = false
+  }
+}
 const shareLink = computed(() => {
   try {
     const origin = window?.location?.origin || ''
@@ -296,8 +385,7 @@ async function toggleWatchLater() {
   }
 }
 
-// 评论面板开关
-const commentsOpen = ref(false)
+// 评论面板开关 - 使用 prop 控制，emit 事件通知父组件
 function lockWrap() {
   try {
     const el = wrap.value
@@ -317,7 +405,7 @@ function unlockWrap() {
 }
 function openCommentsPanel() {
   lockWrap()
-  commentsOpen.value = true
+  emit('toggle-comments', { open: true })
   nextTick(() => {
     try {
       const el = drawerComposer.value
@@ -328,7 +416,7 @@ function openCommentsPanel() {
   })
 }
 function closeCommentsPanel() {
-  commentsOpen.value = false
+  emit('toggle-comments', { open: false })
   setTimeout(() => { unlockWrap() }, 220)
 }
 
@@ -587,16 +675,13 @@ function onKey(e) {
   // 仅当前激活的播放器响应键盘事件，避免多个实例同时处理
   if (!props.autoplay) return
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return
-  if (e.code === 'Escape' && commentsOpen.value) { e.preventDefault(); closeCommentsPanel(); return }
+  if (e.code === 'Escape' && props.commentsOpen) { e.preventDefault(); closeCommentsPanel(); return }
   if (e.code === 'Space') { e.preventDefault(); togglePlay() }
   else if (e.code === 'ArrowLeft') { e.preventDefault(); try { video.value.currentTime = Math.max(0, (video.value.currentTime||0) - 5) } catch(_) { void 0 } }
   else if (e.code === 'ArrowRight') { e.preventDefault(); try { video.value.currentTime = Math.min(duration.value||0, (video.value.currentTime||0) + 5) } catch(_) { void 0 } }
   else if (e.code === 'KeyM') { e.preventDefault(); toggleMute() }
-  else if (e.code === 'ArrowUp') { e.preventDefault(); volume.value = Math.min(1, volume.value + 0.05); if (volume.value>0) mutedState.value=false; applyVolume() }
-  else if (e.code === 'ArrowDown') { e.preventDefault(); volume.value = Math.max(0, volume.value - 0.05); if (volume.value===0) mutedState.value=true; applyVolume() }
-  else if (e.code === 'PageDown') { e.preventDefault(); emit('request-next') }
-  else if (e.code === 'PageUp') { e.preventDefault(); emit('request-prev') }
-  else if (e.code === 'KeyC') { e.preventDefault(); openCommentsPanel() }
+  else if (e.code === 'ArrowUp') { e.preventDefault(); emit('request-prev') }
+  else if (e.code === 'ArrowDown') { e.preventDefault(); emit('request-next') }
 }
 
 async function submitDrawerComment() {
@@ -748,7 +833,7 @@ const showQuality = computed(() => !!(isHls.value || (typeof props.src === 'stri
 const canSwitchQuality = computed(() => !!(isHls.value && levels.value && levels.value.length > 1))
 
 watch(() => props.src, async (nv) => {
-  // 切换视频源前刷新一次历史
+  // 切换视频源前刷新历史
   stopRecord(true)
   addPreconnect(nv)
   loadResume()
@@ -967,6 +1052,25 @@ onBeforeUnmount(() => {
 .share-modal .btn.on{background:var(--accent);border-color:var(--accent);color:#0b1220}
 .share-modal .muted{color:var(--muted);font-size:13px}
 .share-modal a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+
+/* 举报表单样式 */
+.report-select, .report-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--btn-border, #d1d5db);
+  border-radius: 8px;
+  background: var(--bg, #fff);
+  color: var(--text, #111827);
+  font-size: 14px;
+}
+.report-select:focus, .report-textarea:focus {
+  outline: none;
+  border-color: var(--accent, #38bdf8);
+}
+.report-select option {
+  background: var(--bg, #fff);
+  color: var(--text, #111827);
+}
 
 /* 评论抽屉样式 */
 .comments-mask{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:5}

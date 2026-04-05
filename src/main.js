@@ -5,6 +5,7 @@ import { api } from './api'
 import router from './router'
 import { useAuthStore } from './stores/auth'
 import { useUiStore } from './stores/ui'
+import { useConfigStore } from './stores/config'
 
 // 初始化 API 基址（优先使用持久化配置；但避免在非 localhost 环境误用 localhost）
 try {
@@ -34,6 +35,15 @@ try {
 const app = createApp(App)
 const pinia = createPinia()
 app.use(pinia).use(router)
+
+// 初始化全局配置并开启定时轮询（用于检测强制刷新）
+try {
+  const configStore = useConfigStore(pinia)
+  configStore.fetchConfigs().then(() => {
+    // 每 30 秒检查一次配置版本，实现全端同步强制刷新
+    setInterval(() => configStore.fetchConfigs(), 30000)
+  })
+} catch (e) { console.error('Config init failed', e) }
 
 // 尽早初始化登录态，减少 /me 刷新时的状态闪断
 try {

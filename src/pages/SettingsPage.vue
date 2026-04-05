@@ -9,7 +9,7 @@
       </div>
       <div class="row">
         <label>简介</label>
-        <textarea v-model.trim="bio" rows="3" placeholder="一句话介绍自己"></textarea>
+        <textarea v-model.trim="bio" rows="3" placeholder="一句话介绍自己" maxlength="20"></textarea>
       </div>
       <div class="actions">
         <button class="btn" :disabled="savingProfile" @click="saveProfile">保存</button>
@@ -273,8 +273,10 @@ h1 { font-size: 28px; margin: 0 0 12px; }
 .card { background: var(--bg); border:1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 h2 { font-size: 18px; margin: 0 0 12px; }
 .row { display:grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; margin: 10px 0; }
+.row > *:nth-child(2) { min-width: 0; }
 label { color: var(--muted); }
-input, textarea, select { width: 100%; padding: 10px 12px; border:1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); }
+input, textarea, select { width: 100%; padding: 10px 12px; border:1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); box-sizing: border-box; }
+textarea { resize: none; }
 .actions { display:flex; justify-content:flex-end; }
 .btn { padding:8px 16px; border-radius:10px; border:1px solid var(--btn-border); background: var(--btn-bg); color: var(--text); cursor:pointer; }
 .btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); }

@@ -23,6 +23,65 @@ function resolveApiBase() {
 
 let API_BASE = resolveApiBase();
 
+function withApiBaseMaybe(u) {
+  const s = String(u || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) {
+    try {
+      const proto = (typeof window !== 'undefined' && window.location && window.location.protocol) ? window.location.protocol : 'http:';
+      return `${proto}${s}`;
+    } catch (_) {
+      return `http:${s}`;
+    }
+  }
+  // Media paths returned by backend may be relative (e.g. /media/...). In that case, prefix current API base.
+  if (s.startsWith('/media/') || s.startsWith('media/')) {
+    const rel = s.startsWith('/') ? s : `/${s}`;
+    return `${API_BASE}${rel}`;
+  }
+  return s;
+}
+
+// 请求去重与 429 退避控制
+const pendingRequests = new Map();
+const rateLimitState = new Map();
+let globalInFlight = 0;
+const MAX_CONCURRENT = 1000; // 禁用并发限制
+const MAX_429_RETRIES = 0; // 禁用 429 重试
+const BASE_429_DELAY = 0;
+
+function getRequestKey(url, method, body) {
+  const bodyKey = body ? JSON.stringify(body) : '';
+  return `${method}::${url}::${bodyKey}`;
+}
+
+function isRateLimited(key) {
+  const state = rateLimitState.get(key);
+  if (!state) return false;
+  return Date.now() < state.retryAfter;
+}
+
+function get429Delay(attempt) {
+  const jitter = Math.floor(Math.random() * 500);
+  return BASE_429_DELAY * Math.pow(2, attempt) + jitter;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForSlot() {
+  while (globalInFlight >= MAX_CONCURRENT) {
+    await sleep(100);
+  }
+  globalInFlight++;
+}
+
+function releaseSlot() {
+  globalInFlight = Math.max(0, globalInFlight - 1);
+}
+
 class ApiError extends Error {
   constructor(props = {}) {
     const message = props.detail || props.message || '请求失败'
@@ -128,68 +187,113 @@ function parseError(res, data) {
   return err;
 }
 
-async function request(path, { method = 'GET', headers = {}, body = null, auth = true, isForm = false } = {}) {
+async function request(path, { method = 'GET', headers = {}, body = null, auth = true, isForm = false, attempt = 0 } = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
-  const h = new Headers(headers);
-  if (auth) {
-    const token = getAccessToken();
-    if (token) h.set('Authorization', `Bearer ${token}`);
-  }
-  if (!isForm) {
-    h.set('Content-Type', 'application/json');
-  }
-  // 让后端根据语言渲染邮件模板
-  if (!h.has('Accept-Language') && typeof navigator !== 'undefined') {
-    h.set('Accept-Language', navigator.language || 'zh-CN');
-  }
-  const init = { method, headers: h };
-  if (body) init.body = isForm ? body : JSON.stringify(body);
+  const key = getRequestKey(url, method, body);
 
-  let res;
-  try {
-    res = await fetch(url, init);
-  } catch (e) {
-    throw new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达', errors: String(e) });
+  // 请求去重：如果相同的请求正在进行中，返回该 Promise
+  const pending = pendingRequests.get(key);
+  if (pending) {
+    return pending;
   }
 
-  const contentType = res.headers.get('Content-Type') || '';
-  const isJSON = contentType.includes('application/json');
-  let data = isJSON ? await res.json() : await res.text();
+  // 检查是否处于 429 退避期
+  if (isRateLimited(key) && attempt === 0) {
+    const state = rateLimitState.get(key);
+    const waitMs = state ? Math.max(0, state.retryAfter - Date.now()) : BASE_429_DELAY;
+    await sleep(waitMs);
+  }
 
-  // Auto refresh logic on 401 for authenticated requests
-  if (auth && res.status === 401) {
-    const refreshed = await tryRefresh();
-    if (refreshed) {
-      // retry once with new access token
-      const retryHeaders = new Headers(headers);
-      const newToken = getAccessToken();
-      if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
-      if (!isForm) retryHeaders.set('Content-Type', 'application/json');
-      if (!retryHeaders.has('Accept-Language') && typeof navigator !== 'undefined') {
-        retryHeaders.set('Accept-Language', navigator.language || 'zh-CN');
-      }
-      const retryInit = { method, headers: retryHeaders };
-      if (body) retryInit.body = isForm ? body : JSON.stringify(body);
-      let res2;
-      try { res2 = await fetch(url, retryInit) } catch (e) {
-        throw new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达', errors: String(e) });
-      }
-      const ct2 = res2.headers.get('Content-Type') || '';
-      const json2 = ct2.includes('application/json');
-      const data2 = json2 ? await res2.json() : await res2.text();
-      if (!res2.ok) {
-        const perr = parseError(res2, json2 ? data2 : { detail: data2 });
-        throw new ApiError(perr);
-      }
-      return data2;
+  const promise = (async () => {
+    // 等待并发槽位
+    await waitForSlot();
+    
+    const h = new Headers(headers);
+    if (auth) {
+      const token = getAccessToken();
+      if (token) h.set('Authorization', `Bearer ${token}`);
     }
-  }
+    if (!isForm) {
+      h.set('Content-Type', 'application/json');
+    }
+    if (!h.has('Accept-Language') && typeof navigator !== 'undefined') {
+      h.set('Accept-Language', navigator.language || 'zh-CN');
+    }
+    const init = { method, headers: h };
+    if (body) init.body = isForm ? body : JSON.stringify(body);
 
-  if (!res.ok) {
-    const perr = parseError(res, isJSON ? data : { detail: data });
-    throw new ApiError(perr);
-  }
-  return data;
+    let res;
+    try {
+      res = await fetch(url, init);
+    } catch (e) {
+      pendingRequests.delete(key);
+      releaseSlot();
+      throw new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达', errors: String(e) });
+    }
+
+    // 处理 429 速率限制
+    if (res.status === 429) {
+      if (attempt < MAX_429_RETRIES) {
+        const delay = get429Delay(attempt);
+        rateLimitState.set(key, { retryAfter: Date.now() + delay, attempt: attempt + 1 });
+        await sleep(delay);
+        pendingRequests.delete(key);
+        releaseSlot();
+        return request(path, { method, headers, body, auth, isForm, attempt: attempt + 1 });
+      }
+    }
+
+    const contentType = res.headers.get('Content-Type') || '';
+    const isJSON = contentType.includes('application/json');
+    let data = isJSON ? await res.json() : await res.text();
+
+    // Auto refresh logic on 401 for authenticated requests
+    if (auth && res.status === 401) {
+      const refreshed = await tryRefresh();
+      if (refreshed) {
+        const retryHeaders = new Headers(headers);
+        const newToken = getAccessToken();
+        if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
+        if (!isForm) retryHeaders.set('Content-Type', 'application/json');
+        if (!retryHeaders.has('Accept-Language') && typeof navigator !== 'undefined') {
+          retryHeaders.set('Accept-Language', navigator.language || 'zh-CN');
+        }
+        const retryInit = { method, headers: retryHeaders };
+        if (body) retryInit.body = isForm ? body : JSON.stringify(body);
+        let res2;
+        try { res2 = await fetch(url, retryInit) } catch (e) {
+          pendingRequests.delete(key);
+          releaseSlot();
+          throw new ApiError({ status: 0, code: 'network_error', detail: '网络异常或服务器不可达', errors: String(e) });
+        }
+        const ct2 = res2.headers.get('Content-Type') || '';
+        const json2 = ct2.includes('application/json');
+        const data2 = json2 ? await res2.json() : await res2.text();
+        if (!res2.ok) {
+          pendingRequests.delete(key);
+          releaseSlot();
+          const perr = parseError(res2, json2 ? data2 : { detail: data2 });
+          throw new ApiError(perr);
+        }
+        pendingRequests.delete(key);
+        releaseSlot();
+        return data2;
+      }
+    }
+
+    if (!res.ok) {
+      pendingRequests.delete(key);
+      releaseSlot();
+      const perr = parseError(res, isJSON ? data : { detail: data });
+      throw new ApiError(perr);
+    }
+    pendingRequests.delete(key);
+    releaseSlot();
+    return data;
+  })();
+
+  pendingRequests.set(key, promise);
+  return promise;
 }
 
 async function tryRefresh() {
@@ -281,7 +385,7 @@ export const api = {
     return {
       items: Array.isArray(data?.results) ? data.results.map(v => ({
         id: v.id,
-        cover: v.thumbnail_url || '',
+        cover: withApiBaseMaybe(v.thumbnail_url) || '',
         title: v.title || '',
         views: v.view_count ?? null,
         likes: v.like_count ?? null,
@@ -291,8 +395,8 @@ export const api = {
         publishedAt: v.published_at || v.created_at || null,
         liked: Boolean(v.liked ?? false),
         favorited: Boolean(v.favorited ?? false),
-        src: (v.hls_master_url || v.video_url || ''),
-        thumbVtt: v.thumbnail_vtt_url || null,
+        src: withApiBaseMaybe(v.hls_master_url || v.video_url) || '',
+        thumbVtt: withApiBaseMaybe(v.thumbnail_vtt_url) || null,
         category: v.category || null,
         tags: Array.isArray(v.tags) ? v.tags : [],
       })) : [],
@@ -310,7 +414,7 @@ export const api = {
     return {
       items: Array.isArray(data?.results) ? data.results.map(v => ({
         id: v.id,
-        cover: v.thumbnail_url || '',
+        cover: withApiBaseMaybe(v.thumbnail_url) || '',
         title: v.title || '',
         views: v.view_count ?? null,
         likes: v.like_count ?? null,
@@ -320,8 +424,8 @@ export const api = {
         publishedAt: v.published_at || v.created_at || null,
         liked: Boolean(v.liked ?? false),
         favorited: Boolean(v.favorited ?? false),
-        src: (v.hls_master_url || v.video_url || ''),
-        thumbVtt: v.thumbnail_vtt_url || null,
+        src: withApiBaseMaybe(v.hls_master_url || v.video_url) || '',
+        thumbVtt: withApiBaseMaybe(v.thumbnail_vtt_url) || null,
       })) : [],
       page: Number(data?.page || page || 1),
       hasNext: Boolean(data?.has_next ?? false),
@@ -337,7 +441,7 @@ export const api = {
     return {
       items: Array.isArray(data?.results) ? data.results.map(v => ({
         id: v.id,
-        cover: v.thumbnail_url || '',
+        cover: withApiBaseMaybe(v.thumbnail_url) || '',
         title: v.title || '',
         views: v.view_count ?? null,
         likes: v.like_count ?? null,
@@ -347,8 +451,8 @@ export const api = {
         publishedAt: v.published_at || v.created_at || null,
         liked: Boolean(v.liked ?? false),
         favorited: Boolean(v.favorited ?? false),
-        src: (v.hls_master_url || v.video_url || ''),
-        thumbVtt: v.thumbnail_vtt_url || null,
+        src: withApiBaseMaybe(v.hls_master_url || v.video_url) || '',
+        thumbVtt: withApiBaseMaybe(v.thumbnail_vtt_url) || null,
       })) : [],
       page: Number(data?.page || page || 1),
       hasNext: Boolean(data?.has_next ?? false),
@@ -358,7 +462,17 @@ export const api = {
   async videoDetail(id) {
     if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少视频ID' })
     // Use auth=true so owners can access private videos; anonymous requests still work when no token
-    return request(`/api/videos/${encodeURIComponent(id)}/`, { auth: true })
+    const v = await request(`/api/videos/${encodeURIComponent(id)}/`, { auth: true })
+    try {
+      if (v && typeof v === 'object') {
+        if ('thumbnail_url' in v) v.thumbnail_url = withApiBaseMaybe(v.thumbnail_url)
+        if ('thumbnail_vtt_url' in v) v.thumbnail_vtt_url = withApiBaseMaybe(v.thumbnail_vtt_url)
+        if ('video_url' in v) v.video_url = withApiBaseMaybe(v.video_url)
+        if ('hls_master_url' in v) v.hls_master_url = withApiBaseMaybe(v.hls_master_url)
+        if ('low_mp4_url' in v) v.low_mp4_url = withApiBaseMaybe(v.low_mp4_url)
+      }
+    } catch (_) { /* no-op */ }
+    return v
   },
   async videoUpdate(id, partial = {}) {
     if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少视频ID' })
@@ -706,6 +820,13 @@ export const api = {
     const qp = `?session=${encodeURIComponent(session)}`;
     return request(`/api/users/login/qr/status/${qp}`, { auth: false });
   },
+  // Global Configs
+  async globalConfigs() {
+    return request('/api/configs/global/', { auth: false });
+  },
+  async adminUpdateConfigs(payload) {
+    return request('/api/configs/admin/update/', { method: 'POST', body: payload, auth: true });
+  },
   // Popup stats for avatar hover
   async popupStats(force = false) {
     const qp = force ? '?force=1' : '';
@@ -790,6 +911,17 @@ export const api = {
     if (!id) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少公告ID' })
     return request(`/api/notifications/announcements/${encodeURIComponent(id)}/read/`, { method: 'POST', body: {} })
   },
+  // Reports (举报)
+  async reportCreate({ targetType, targetId, reasonCode = 'other', description = '' } = {}) {
+    if (!targetType || !targetId) throw new ApiError({ status: 400, code: 'bad_request', detail: '缺少举报目标类型或ID' })
+    const validTypes = ['video', 'comment', 'user']
+    if (!validTypes.includes(targetType)) throw new ApiError({ status: 400, code: 'bad_request', detail: '非法的举报类型' })
+    return request('/api/interactions/reports/', {
+      method: 'POST',
+      body: { target_type: targetType, target_id: targetId, reason_code: reasonCode, description },
+      auth: true
+    })
+  },
   // Videos list (public feed) - used for "我的/推荐"标签
   async videosList({ page = 1, pageSize = 12, userId = '', order = '', q = '', categoryId = '', tagIds = [], tagMatch = 'any' } = {}) {
     const params = new URLSearchParams();
@@ -811,7 +943,7 @@ export const api = {
         id: v.id,
         status: v.status || '',
         transcodeError: v.transcode_error || '',
-        cover: v.thumbnail_url || '',
+        cover: withApiBaseMaybe(v.thumbnail_url) || '',
         title: v.title || '',
         views: v.view_count ?? null,
         likes: v.like_count ?? null,
@@ -819,11 +951,11 @@ export const api = {
         comments: v.comment_count ?? 0,
         author: v.author || null,
         publishedAt: v.published_at || v.created_at || null,
-        lowMp4: v.low_mp4_url || '',
+        lowMp4: withApiBaseMaybe(v.low_mp4_url) || '',
         liked: Boolean(v.liked ?? false),
         favorited: Boolean(v.favorited ?? false),
-        src: (v.hls_master_url || v.video_url || ''),
-        thumbVtt: v.thumbnail_vtt_url || null,
+        src: withApiBaseMaybe(v.hls_master_url || v.video_url) || '',
+        thumbVtt: withApiBaseMaybe(v.thumbnail_vtt_url) || null,
         category: v.category || null,
       })) : [],
       page: Number(data?.page || page || 1),
@@ -841,7 +973,7 @@ export const api = {
     return {
       items: Array.isArray(data?.results) ? data.results.map(v => ({
         id: v.id,
-        cover: v.thumbnail_url || '',
+        cover: withApiBaseMaybe(v.thumbnail_url) || '',
         title: v.title || '',
         views: v.view_count ?? null,
         likes: v.like_count ?? null,
@@ -851,8 +983,8 @@ export const api = {
         publishedAt: v.published_at || v.created_at || null,
         liked: Boolean(v.liked ?? false),
         favorited: Boolean(v.favorited ?? false),
-        src: (v.hls_master_url || v.video_url || ''),
-        thumbVtt: v.thumbnail_vtt_url || null,
+        src: withApiBaseMaybe(v.hls_master_url || v.video_url) || '',
+        thumbVtt: withApiBaseMaybe(v.thumbnail_vtt_url) || null,
       })) : [],
       page: Number(data?.page || page || 1),
       hasNext: Boolean(data?.has_next ?? false),

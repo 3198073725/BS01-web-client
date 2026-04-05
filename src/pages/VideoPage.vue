@@ -28,12 +28,14 @@
           :meta-liked="!!detail.liked"
           :meta-favorited="!!detail.favorited"
           :comments-allowed="commentsAllowed"
+          :comments-open="commentsOpen"
           @request-next="goNext"
           @request-prev="goPrev"
           @error="onPlayerError"
           @update-like="onUpdateLike"
           @update-favorite="onUpdateFavorite"
           @update-comments="onUpdateComments"
+          @toggle-comments="commentsOpen = $event.open"
         />
       </div>
       <div class="meta">
@@ -53,9 +55,13 @@ import { api } from '@/api'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
 
+import { useConfigStore } from '@/stores/config'
+
 const router = useRouter()
 const route = useRoute()
+const configStore = useConfigStore()
 const vid = computed(() => String(route.params.id || ''))
+const commentsOpen = ref(false)
 
 // 播放源/元信息缓存
 const detail = ref({})
@@ -78,6 +84,10 @@ const currentTitle = computed(() => (current.value && current.value.title) || de
 const currentViews = computed(() => (current.value && current.value.views) || detail.value.view_count || 0)
 const commentsAllowed = computed(() => {
   try {
+    // 首先检查全局评论开关
+    const globalAllowed = configStore.get('allow_comments', true)
+    if (!globalAllowed) return false
+    // 然后检查视频级别的评论开关
     const d = detail.value || {}
     return !(d && d.allow_comments === false)
   } catch (_) { return true }

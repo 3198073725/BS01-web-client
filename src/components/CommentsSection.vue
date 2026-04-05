@@ -22,6 +22,7 @@
             <div class="bubble" @click="activateReply(c)">{{ c.content }}</div>
             <div class="actions">
               <button v-if="commentsAllowed" class="link" @click="activateReply(c)">回复</button>
+              <button class="link report" @click="openReportComment(c)">举报</button>
               <button v-if="c.replies_count>0 && !c._showReplies" class="link" @click="openReplies(c)">展开 {{ c.replies_count }} 条回复</button>
               <button v-if="c._showReplies" class="link" @click="collapseReplies(c)">收起回复</button>
             </div>
@@ -46,6 +47,7 @@
                     <div class="bubble light">{{ r.content }}</div>
                     <div class="actions">
                       <button v-if="commentsAllowed" class="link" @click="activateReplyTo(r, c)">回复</button>
+                      <button class="link report" @click="openReportComment(r)">举报</button>
                     </div>
                     <div v-if="commentsAllowed && r._replying" class="write small">
                       <input v-model.trim="r._replyText" :placeholder="'回复 ' + replyToName(r, c)" @keydown.enter.exact.prevent="submitReplyTo(r, c)" />
@@ -67,6 +69,32 @@
     <div v-if="loading" class="loading">加载中…</div>
     <div v-if="err" class="error small">{{ err.detail || '加载失败' }}</div>
   </div>
+
+  <!-- Report Modal -->
+  <transition name="fade">
+    <div v-if="reportOpen" class="report-mask" @click.self="closeReport">
+      <div class="report-modal">
+        <h3>举报评论</h3>
+        <div class="form">
+          <label>举报原因</label>
+          <select v-model="reportReason">
+            <option value="spam">垃圾广告/刷屏</option>
+            <option value="inappropriate">色情/暴力/不适内容</option>
+            <option value="harassment">人身攻击/骚扰</option>
+            <option value="misinformation">虚假信息</option>
+            <option value="other">其他</option>
+          </select>
+          <label style="margin-top:12px;">详细说明（可选）</label>
+          <textarea v-model="reportDesc" placeholder="请描述举报原因..." rows="3"></textarea>
+          <button class="btn primary" :disabled="reportBusy || !reportReason" @click="submitReport" style="margin-top:16px;width:100%;">
+            {{ reportBusy ? '提交中...' : '提交举报' }}
+          </button>
+          <p v-if="reportError" class="err">{{ reportError }}</p>
+        </div>
+        <button class="close" @click="closeReport">✕</button>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -92,6 +120,52 @@ const total = ref(0)
 const hiddenByPrivacy = ref(false)
 
 const busy = ref(false)
+
+// --- 举报相关 ---
+const reportOpen = ref(false)
+const reportBusy = ref(false)
+const reportReason = ref('other')
+const reportDesc = ref('')
+const reportError = ref('')
+const reportTarget = ref(null)
+
+function openReportComment(c) {
+  if (!user.value) { ui.showDialog('请先登录', 'warn'); return }
+  // 检查是否是自己的评论
+  try {
+    if (c && c.user && user.value && String(c.user.id) === String(user.value.id)) {
+      ui.showDialog('不能举报自己发布的评论', 'warn')
+      return
+    }
+  } catch (_) { /* no-op */ }
+  reportTarget.value = c
+  reportOpen.value = true
+  reportReason.value = 'other'
+  reportDesc.value = ''
+  reportError.value = ''
+}
+function closeReport() { reportOpen.value = false; reportTarget.value = null }
+
+async function submitReport() {
+  if (!reportTarget.value || reportBusy.value) return
+  if (!reportReason.value) { reportError.value = '请选择举报原因'; return }
+  reportBusy.value = true
+  reportError.value = ''
+  try {
+    await api.reportCreate({
+      targetType: 'comment',
+      targetId: reportTarget.value.id,
+      reasonCode: reportReason.value,
+      description: reportDesc.value
+    })
+    ui.showDialog('举报已提交，我们会尽快处理', 'success')
+    closeReport()
+  } catch (e) {
+    reportError.value = (e && (e.detail || e.message)) || '举报失败，请稍后重试'
+  } finally {
+    reportBusy.value = false
+  }
+}
 
 function userName(u) {
   try { return (u?.display_name || u?.username || '用户') } catch { return '用户' }
@@ -252,10 +326,24 @@ defineExpose({ prepend, reload })
 .bubble.light{background:var(--bg-elev)}
 .actions{display:flex;gap:12px;align-items:center;margin-top:6px}
 .link{background:transparent;border:none;color:var(--accent);cursor:pointer;padding:0}
+.link.report{color:#dc2626;}
 .replies{margin-top:10px;padding-left:10px;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:12px}
 .reply{padding:4px 0}
 .more{margin-top:6px}
 .loading{color:var(--muted);margin-top:6px;text-align:center}
 .empty{color:var(--muted);text-align:center;padding:12px}
 .error{color:var(--danger);margin-top:6px;text-align:center}
+
+/* Report Modal Styles */
+.report-mask{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100}
+.report-modal{position:relative;background:var(--bg-elev);border:1px solid var(--border);border-radius:12px;padding:20px;width:90%;max-width:400px}
+.report-modal h3{margin:0 0 16px;font-size:16px;color:var(--text)}
+.report-modal .form{display:flex;flex-direction:column;gap:8px}
+.report-modal label{font-size:12px;color:var(--muted)}
+.report-modal select,.report-modal textarea{width:100%;padding:8px 10px;border:1px solid var(--btn-border);border-radius:8px;background:var(--bg);color:var(--text)}
+.report-modal textarea{resize:vertical}
+.report-modal .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.report-modal .err{color:#dc2626;margin-top:8px;font-size:14px}
+.report-modal .close{position:absolute;top:12px;right:12px;width:28px;height:28px;padding:0;border-radius:50%;background:transparent;border:none;color:var(--muted);cursor:pointer}
+.report-modal .close:hover{color:var(--text)}
 </style>
