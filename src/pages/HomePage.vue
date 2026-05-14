@@ -233,6 +233,8 @@ const showChild = computed(() => inMe.value
   || route.path.startsWith('/video')
   || route.path.startsWith('/search')
   || route.path.startsWith('/settings')
+  || route.path.startsWith('/agreement')
+  || route.path.startsWith('/privacy')
 )
 
 // 当从子页面返回到推荐流时，重新加载并定位到首条，避免空白

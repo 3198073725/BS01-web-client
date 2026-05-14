@@ -21,7 +21,8 @@ import SearchPage from '../pages/SearchPage.vue'
 import SearchFeed from '../pages/SearchFeed.vue'
 import FeedPlayer from '../pages/me/FeedPlayer.vue'
 import ApiPage from '../pages/ApiPage.vue'
-
+import AgreementView from '../pages/AgreementView.vue'
+import PrivacyView from '../pages/PrivacyView.vue'
 const routes = [
   {
     path: '/',
@@ -44,6 +45,8 @@ const routes = [
       { path: 'play/:source', name: 'feed-player', component: FeedPlayer, props: true, meta: { requiresAuth: true } },
       { path: 'api', name: 'api', component: ApiPage },
       { path: 'about', name: 'about', component: AboutPage },
+      { path: 'agreement', name: 'agreement', component: AgreementView },
+      { path: 'privacy', name: 'privacy', component: PrivacyView }, 
       { path: 'featured', name: 'featured', component: FeaturedPage },
       { path: 'following', name: 'following', component: FollowingPage },
       { path: 'friends', name: 'friends', component: FriendsPage },

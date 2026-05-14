@@ -30,7 +30,8 @@
             </div>
             <div class="err-line" aria-live="polite">{{ showCodeErr ? codeErr : '' }}</div>
             <button class="btn primary" :disabled="loading" @click="submitCodeLogin">{{ loading? '处理中...' : (allowRegister ? '登录/注册' : '登录') }}</button>
-            <div class="agreements">{{ allowRegister ? '登录或注册即代表同意 ' : '登录即代表同意 ' }}<a href="#">用户协议</a> 和 <a href="#">隐私政策</a></div>
+            <div class="agreements">{{ allowRegister ? '登录或注册即代表同意 ' : '登录即代表同意 ' }}<router-link to="/agreement" @click="$emit('close')">用户协议</router-link> 和
+  <router-link to="/privacy" @click="$emit('close')">隐私政策</router-link></div>
           </div>
           <div v-else class="panel">
             <div class="row">
@@ -42,7 +43,8 @@
             </div>
             <div class="err-line" aria-live="polite">{{ showPasswordErr ? passwordErr : '' }}</div>
             <button class="btn primary" :disabled="loading" @click="submitPassword">{{ loading? '登录中...' : '登录' }}</button>
-            <div class="agreements">登录即代表同意 <a href="#">用户协议</a> 和 <a href="#">隐私政策</a></div>
+            <div class="agreements">登录即代表同意 <router-link to="/agreement" @click="$emit('close')">用户协议</router-link> 和
+  <router-link to="/privacy" @click="$emit('close')">隐私政策</router-link></div>
           </div>
         </div>
       </div>
@@ -51,6 +53,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { useLoginModal } from './LoginModal.logic.js'
 const emit = defineEmits(['close', 'logged-in'])
