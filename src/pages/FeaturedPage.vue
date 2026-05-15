@@ -1,6 +1,6 @@
 <template>
   <div class="feed" ref="feedRef">
-    <div class="feed-item" v-for="(item, idx) in items" :key="idx" :ref="setItemRef" :data-idx="idx">
+    <div class="feed-item" v-for="(item, idx) in items" :key="item.id || idx" :ref="setItemRef" :data-idx="idx">
       <div class="player-card">
         <VideoPlayer v-if="item.type==='video'"
                      :src="displaySrc[idx] || item.src"
@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, onBeforeUpdate } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
 import VideoPlayer from '@/components/VideoPlayer.vue'
@@ -50,10 +50,11 @@ let aborted = false
 let io
 
 function setItemRef(el) { if (el) itemRefs.value.push(el) }
+onBeforeUpdate(() => { itemRefs.value = [] })
 onBeforeUnmount(() => { aborted = true; itemRefs.value = []; if (io) { try { io.disconnect() } catch(_) { void 0 } } })
 
 function stride() { const el = feedRef.value; return el ? el.clientHeight : 0 }
-function clamp(i) { const max = Math.max(0, (itemRefs.value.length||1)-1); return Math.max(0, Math.min(max, i)) }
+function clamp(i) { const max = Math.max(0, items.value.length - 1); return Math.max(0, Math.min(max, i)) }
 function goTo(i, opts = {}) {
   const el = feedRef.value; if (!el) return
   const t = clamp(i); currentIndex.value = t

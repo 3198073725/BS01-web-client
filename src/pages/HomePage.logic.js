@@ -15,6 +15,19 @@ export function useHomePage() {
   const loaded = new Set()
   let io // IntersectionObserver
   let isHidden = false
+  function onVisibilityChange() { isHidden = document.hidden }
+  function onStorageAuthSync(e) {
+    if (e.key === 'auth_sync' && e.newValue) {
+      try {
+        const msg = JSON.parse(e.newValue)
+        if (msg && msg.type === 'tokens_set') {
+          api.me().then(u => { user.value = u }).catch(() => { user.value = null })
+          loadFeed(1)
+        }
+      } catch (_) { /* no-op */ }
+    }
+  }
+  function onWindowAuthSync() { loadFeed(1) }
 
   const router = useRouter()
   const route = useRoute()
@@ -157,6 +170,7 @@ export function useHomePage() {
     try {
       const res = await api.recommendationFeed({ page, pageSize: 12 })
       const mapped = mapFeedToItems(res.items)
+      const requestedSize = 12
       if (page === 1) {
         items.value = mapped
         try { loaded.clear() } catch (_) { /* no-op */ }
@@ -168,7 +182,8 @@ export function useHomePage() {
         nextTick(() => { setupIO(); updatePreload(currentIndex.value) })
       }
       curPage.value = Number(res.page || page || 1)
-      hasNext.value = !!res.hasNext
+      hasNext.value = !!res.hasNext && mapped.length >= requestedSize
+      if (!mapped.length) hasNext.value = false
       // 已在上面 nextTick 中执行了 setupIO 与预加载
     } catch (_) { /* 忽略错误，保持占位 */ }
     finally { loadingFeed.value = false }
@@ -184,7 +199,7 @@ export function useHomePage() {
     return Math.max(1, el.clientHeight - GAP)
   }
   function clamp(i) {
-    const max = Math.max(0, (itemRefs.value.length || 1) - 1)
+    const max = Math.max(0, items.value.length - 1)
     if (i < 0) return 0
     if (i > max) return max
     return i
@@ -313,7 +328,7 @@ export function useHomePage() {
     el.addEventListener('touchmove', onTouchMove, { passive: true })
     el.addEventListener('touchend', onTouchEnd, { passive: true })
 
-    document.addEventListener('visibilitychange', () => { isHidden = document.hidden })
+    document.addEventListener('visibilitychange', onVisibilityChange)
     try { document.addEventListener('click', onDocClick) } catch (_) { /* no-op */ }
 
     setupIO()
@@ -324,20 +339,8 @@ export function useHomePage() {
 
     try { api.me().then(u => { user.value = u }).catch(() => { user.value = null }) } catch (_) { /* no-op */ }
     try {
-      window.addEventListener('storage', (e) => {
-        if (e.key === 'auth_sync' && e.newValue) {
-          try {
-            const msg = JSON.parse(e.newValue)
-            if (msg && msg.type === 'tokens_set') {
-              api.me().then(u => { user.value = u }).catch(() => { user.value = null })
-              // 登录后立刻重载推荐流
-              loadFeed(1)
-            }
-          } catch (_) { /* no-op */ }
-        }
-      })
-      // 自定义事件同样处理
-      window.addEventListener('auth:sync', () => { loadFeed(1) })
+      window.addEventListener('storage', onStorageAuthSync)
+      window.addEventListener('auth:sync', onWindowAuthSync)
     } catch (_) { /* no-op */ }
   })
 
@@ -353,7 +356,10 @@ export function useHomePage() {
       el.removeEventListener('touchend', onTouchEnd)
     }
     if (io) { try { io.disconnect() } catch (_) { /* no-op */ } }
+    try { document.removeEventListener('visibilitychange', onVisibilityChange) } catch (_) { /* no-op */ }
     try { document.removeEventListener('click', onDocClick) } catch (_) { /* no-op */ }
+    try { window.removeEventListener('storage', onStorageAuthSync) } catch (_) { /* no-op */ }
+    try { window.removeEventListener('auth:sync', onWindowAuthSync) } catch (_) { /* no-op */ }
   })
 
   return {

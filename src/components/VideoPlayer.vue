@@ -773,6 +773,7 @@ async function setSource(url) {
     triedFallback.value = false
     cleanupHls()
     if (!video.value) return
+    let shouldCallNativeLoad = true
     if (isM3U8(url) && !nativeHlsSupported()) {
       const HlsLib = await loadHlsMulti()
       if (HlsLib && HlsLib.isSupported && HlsLib.isSupported()) {
@@ -781,6 +782,7 @@ async function setSource(url) {
         hls.loadSource(url)
         const Events = HlsLib.Events
         isHls.value = true
+        shouldCallNativeLoad = false
         hls.on(Events.MANIFEST_PARSED, () => {
           try {
             const arr = (hls.levels || []).map((L, idx) => ({ index: idx, label: L.height ? `${L.height}p` : `${Math.round((L.bitrate||0)/1000)}kbps` }))
@@ -813,7 +815,7 @@ async function setSource(url) {
       video.value.src = url || ''
       isHls.value = false; levels.value = []; level.value = -1
     }
-    await video.value.load?.()
+    if (shouldCallNativeLoad) await video.value.load?.()
   } catch (_) { void 0 }
 }
 function applyLevel() { try { if (hls && typeof level.value === 'number') hls.currentLevel = level.value } catch (_) { void 0 } }

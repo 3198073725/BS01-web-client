@@ -26,6 +26,8 @@ try {
         if (msg && msg.type === 'logout') {
           api.clearTokens()
           window.location.reload()
+        } else if (msg && (msg.type === 'tokens_set' || msg.type === 'migrate')) {
+          window.location.reload()
         }
       } catch (_) { /* no-op */ }
     }

@@ -88,7 +88,15 @@ export default {
       try {
         const i = Number(idx)
         const kw = String(q.value || '').trim()
-        router.push({ name: 'search-feed', query: { q: kw, i: String(isNaN(i) ? 0 : i) } })
+        const item = items.value[isNaN(i) ? 0 : i] || null
+        router.push({
+          name: 'search-feed',
+          query: {
+            q: kw,
+            i: String(isNaN(i) ? 0 : i),
+            id: item && item.id ? String(item.id) : '',
+          }
+        })
       } catch (_) { /* no-op */ }
     }
 

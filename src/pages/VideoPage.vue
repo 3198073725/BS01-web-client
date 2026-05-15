@@ -66,6 +66,7 @@ const commentsOpen = ref(false)
 // 播放源/元信息缓存
 const detail = ref({})
 const srcById = ref(Object.create(null))
+const detailById = ref(Object.create(null))
 
 // 推荐流有序列表（不包含 src）
 const items = ref([]) // {id, cover, title, views}
@@ -117,14 +118,17 @@ async function loadFeed(p = 1) {
 async function ensureSrc(id) {
   if (!id) return ''
   const key = String(id)
-  if (srcById.value[key]) return srcById.value[key]
+  if (detailById.value[key]) {
+    detail.value = detailById.value[key]
+    if (srcById.value[key]) return srcById.value[key]
+  }
   try {
     const d = await api.videoDetail(key)
     if (d && (d.hls_master_url || d.video_url)) {
       const src = d.hls_master_url || d.video_url
+      detailById.value = { ...detailById.value, [key]: d }
       srcById.value[key] = src
-      // 同步部分元信息以便展示
-      if (!detail.value || String(detail.value.id) !== key) detail.value = d
+      detail.value = d
       return src
     }
   } catch (_) { /* no-op */ }
@@ -194,6 +198,7 @@ function onUpdateLike({ videoId, liked, likeCount }) {
       const next = { ...d, liked: !!liked }
       if (typeof likeCount === 'number') next.like_count = likeCount
       detail.value = next
+      detailById.value = { ...detailById.value, [String(vid.value)]: next }
     }
   } catch (_) { /* no-op */ }
 }
@@ -204,6 +209,7 @@ function onUpdateFavorite({ videoId, favorited, favoriteCount }) {
       const next = { ...d, favorited: !!favorited }
       if (typeof favoriteCount === 'number') next.favorite_count = favoriteCount
       detail.value = next
+      detailById.value = { ...detailById.value, [String(vid.value)]: next }
     }
   } catch (_) { /* no-op */ }
 }
@@ -213,7 +219,9 @@ function onUpdateComments({ videoId, delta }) {
     if (String(videoId) === String(vid.value)) {
       const d = detail.value || {}
       const cnt = Number(d.comment_count || 0) + Number(delta || 0)
-      detail.value = { ...d, comment_count: Math.max(0, cnt) }
+      const next = { ...d, comment_count: Math.max(0, cnt) }
+      detail.value = next
+      detailById.value = { ...detailById.value, [String(vid.value)]: next }
     }
   } catch (_) { /* no-op */ }
 }

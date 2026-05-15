@@ -196,7 +196,11 @@ export default {
         try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'error', message: (e && (e.detail || e.message)) || '发送失败' } })) } catch (_) {}
       } finally { changeSending.value = false }
     }
-    onUnmounted(() => { try { if (verifyTimer) clearInterval(verifyTimer) } catch (_) {}; try { if (changeTimer) clearInterval(changeTimer) } catch (_) {} })
+    onUnmounted(() => {
+      try { if (verifyTimer) clearInterval(verifyTimer) } catch (_) {}
+      try { if (changeTimer) clearInterval(changeTimer) } catch (_) {}
+      try { onCropUp() } catch (_) { /* no-op */ }
+    })
 
     function normalizeUser(u) {
       const nickname = (u?.nickname || '').trim()
@@ -255,6 +259,8 @@ export default {
     const crop = reactive({ W: 0, H: 0, baseScale: 1, zoom: 1, panX: 0, panY: 0, boxSize: 320 })
     const dragging = ref(false)
     const lastPt = ref({ x: 0, y: 0 })
+    let cropMoveHandler = null
+    let cropUpHandler = null
 
     function openCropper(file) {
       cropFile.value = file
@@ -302,12 +308,12 @@ export default {
     function onCropDown(e) {
       dragging.value = true
       lastPt.value = getPoint(e)
-      const move = (ev) => { onCropMove(ev) }
-      const up = () => { onCropUp(move, up) }
-      window.addEventListener('mousemove', move)
-      window.addEventListener('mouseup', up)
-      window.addEventListener('touchmove', move, { passive: false })
-      window.addEventListener('touchend', up)
+      cropMoveHandler = (ev) => { onCropMove(ev) }
+      cropUpHandler = () => { onCropUp() }
+      window.addEventListener('mousemove', cropMoveHandler)
+      window.addEventListener('mouseup', cropUpHandler)
+      window.addEventListener('touchmove', cropMoveHandler, { passive: false })
+      window.addEventListener('touchend', cropUpHandler)
     }
     function onCropMove(e) {
       if (!dragging.value) return
@@ -319,12 +325,18 @@ export default {
       lastPt.value = p
       clampPan()
     }
-    function onCropUp(move, up) {
+    function onCropUp() {
       dragging.value = false
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-      window.removeEventListener('touchmove', move)
-      window.removeEventListener('touchend', up)
+      if (cropMoveHandler) {
+        window.removeEventListener('mousemove', cropMoveHandler)
+        window.removeEventListener('touchmove', cropMoveHandler)
+      }
+      if (cropUpHandler) {
+        window.removeEventListener('mouseup', cropUpHandler)
+        window.removeEventListener('touchend', cropUpHandler)
+      }
+      cropMoveHandler = null
+      cropUpHandler = null
     }
 
     function getCropRect() {
@@ -369,6 +381,7 @@ export default {
     }
 
     function closeCrop() {
+      onCropUp()
       cropOpen.value = false
       try { if (cropUrl.value) URL.revokeObjectURL(cropUrl.value) } catch (_) { /* no-op */ }
       cropUrl.value = ''

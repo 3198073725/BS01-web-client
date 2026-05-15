@@ -11,6 +11,7 @@
             <i>|</i>
             <button class="link" @click="openFollow('followers')">粉丝 {{ fmtNumber(pageUser?.followers_count) }}</button>
           </div>
+          <div v-if="profileBio" class="bio">{{ profileBio }}</div>
         </div>
       </div>
       <div class="actions">
@@ -81,8 +82,9 @@ export default {
       }
     }
 
-    const displayName = computed(() => (pageUser.value?.nickname || pageUser.value?.display_name || pageUser.value?.username || '用户'))
-    const userInitial = computed(() => String(displayName.value).trim().charAt(0).toUpperCase() || 'U')
+	    const displayName = computed(() => (pageUser.value?.nickname || pageUser.value?.display_name || pageUser.value?.username || '用户'))
+	    const profileBio = computed(() => String(pageUser.value?.bio || '').trim())
+	    const userInitial = computed(() => String(displayName.value).trim().charAt(0).toUpperCase() || 'U')
     const avatarUrl = computed(() => {
       const pp = pageUser.value?.profile_picture
       if (!pp) return ''
@@ -171,26 +173,28 @@ export default {
     watch(() => user.value?.profile_picture, () => { avatarError.value = false; reloadTick.value = Date.now() })
     watch(() => user.value?.updated_at, () => { avatarError.value = false; reloadTick.value = Date.now() })
 
-    return { user, pageUser, isSelf, stats, displayName, userInitial, avatarUrl, avatarError,
-             likesCount, favoritesCount, watchLaterCount, myWorksCount,
-             fmtNumber, editProfile, remember, toggleRemember, followOpen, followTab, uid, openFollow,
-             bulkManage: computed(() => ui.meBulkManage && isSelf.value), toggleBulkManage: () => ui.toggleMeBulkManage(),
-             editOpen, onProfileSaved, canSeeAll, tabQuery, onFollowChanged }
+	    return { user, pageUser, isSelf, stats, displayName, profileBio, userInitial, avatarUrl, avatarError,
+	             likesCount, favoritesCount, watchLaterCount, myWorksCount,
+	             fmtNumber, editProfile, remember, toggleRemember, followOpen, followTab, uid, openFollow,
+	             bulkManage: computed(() => ui.meBulkManage && isSelf.value), toggleBulkManage: () => ui.toggleMeBulkManage(),
+	             editOpen, onProfileSaved, canSeeAll, tabQuery, onFollowChanged }
   }
 }
 </script>
 
 <style scoped>
 .me-page { color: var(--text); }
-.header { display:flex; align-items:center; justify-content:space-between; padding: 50px 16px; border-bottom: 1px solid var(--border); }
+.header { display:flex; align-items:center; justify-content:space-between; padding: 22px 16px; min-height: 108px; border-bottom: 1px solid var(--border); }
 .header.glass { background: rgba(255,255,255,0.06); -webkit-backdrop-filter: blur(10px) saturate(160%); backdrop-filter: blur(10px) saturate(160%); border: 1px solid var(--border); border-radius: 16px; }
-.left { display:flex; align-items:center; gap:16px; }
+.left { display:flex; align-items:center; gap:18px; min-width: 0; }
 .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; border:1px solid var(--btn-border); }
 .avatar.lg { width:72px; height:72px; }
 .avatar-fallback { width:64px; height:64px; border-radius:50%; background: var(--btn-border); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; }
 .avatar-fallback.lg { width:72px; height:72px; font-size:22px; }
-.info .name { font-weight:800; font-size:20px; }
-.info .meta { color: var(--muted); font-size:13px; display:flex; gap:10px; align-items:center; margin-top:6px; }
+.info { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; min-width:0; max-width: min(820px, 55vw); }
+.info .name { font-weight:800; font-size:20px; line-height: 1.2; }
+.info .meta { color: var(--muted); font-size:13px; display:flex; gap:10px; align-items:center; margin-top:8px; }
+.info .bio { max-width: 100%; color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .info .meta .link { background: transparent; border:none; color: var(--text); cursor:pointer; padding: 2px 6px; border-radius: 8px; }
 .info .meta .link:hover { background: var(--hover-bg); }
 .actions { display:flex; gap:8px; }
@@ -204,4 +208,10 @@ export default {
 .content { padding: 16px 0; }
 .btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn.small { padding:6px 12px; font-size: 12px; }
+@media (max-width: 900px) {
+  .header { align-items: flex-start; }
+  .left { align-items: flex-start; }
+  .info { max-width: 100%; }
+  .info .bio { white-space: normal; overflow: visible; text-overflow: clip; }
+}
 </style>

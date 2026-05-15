@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, onBeforeUpdate, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
 import { useUiStore } from '@/stores/ui'
@@ -60,10 +60,11 @@ let aborted = false
 let io
 
 function setItemRef(el) { if (el) itemRefs.value.push(el) }
+onBeforeUpdate(() => { itemRefs.value = [] })
 onBeforeUnmount(() => { aborted = true; itemRefs.value = []; if (io) { try { io.disconnect() } catch(_) { void 0 } } })
 
 function stride() { const el = feedRef.value; return el ? el.clientHeight : 0 }
-function clamp(i) { const max = Math.max(0, (itemRefs.value.length||1)-1); return Math.max(0, Math.min(max, i)) }
+function clamp(i) { const max = Math.max(0, items.value.length - 1); return Math.max(0, Math.min(max, i)) }
 function goTo(i, opts = {}) {
   const el = feedRef.value; if (!el) return
   const t = clamp(i); currentIndex.value = t

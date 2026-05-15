@@ -65,7 +65,7 @@
       <section class="content">
         <div v-if="showChild" class="feed"><router-view /></div>
         <div v-else class="feed" ref="feedRef">
-          <div class="feed-item" v-for="(item, idx) in items" :key="idx" :ref="setItemRef" :data-idx="idx">
+          <div class="feed-item" v-for="(item, idx) in items" :key="item.id || idx" :ref="setItemRef" :data-idx="idx">
             <div class="player-card">
               <VideoPlayer v-if="item.type === 'video'"
                            :src="displaySrc[idx] || item.src"
@@ -118,7 +118,7 @@ import { useHomePage } from './HomePage.logic.js'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useConfigStore } from '@/stores/config'
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const logoSrc = computed(() => {
   const dark = theme.value === 'dark'
@@ -154,6 +154,7 @@ const unread = ref(0)
 function toggleNotif() { showNotif.value = !showNotif.value; if (showNotif.value) refreshUnread() }
 async function refreshUnread() { try { const d = await api.notificationsUnreadCount(); unread.value = Number(d?.unread || 0) } catch (_) { /* no-op */ } }
 onMounted(() => { refreshUnread(); try { window.addEventListener('auth:sync', refreshUnread) } catch (_) { /* no-op */ } })
+onBeforeUnmount(() => { try { window.removeEventListener('auth:sync', refreshUnread) } catch (_) { /* no-op */ } })
 function onLoggedIn(me) {
   auth.user = me
   showLogin.value = false

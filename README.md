@@ -1,6 +1,6 @@
 # VidSprout Web Client | 沉浸式视频交互体验
 
-VidSprout Web 端是面向桌面用户的核心展示平台，致力于提供如丝般顺滑的视频浏览、交互与播放体验。基于 Vue 3 + Vite 的现代化架构，实现了高性能的内容渲染与实时互动。
+VidSprout Web 端是面向桌面用户的核心展示平台，致力于提供如丝般顺滑的视频浏览、交互与播放体验。当前仓库中的实现基于 Vue 3 + Vue CLI。
 
 ## 🌈 产品特性
 
@@ -27,10 +27,9 @@ VidSprout Web 端是面向桌面用户的核心展示平台，致力于提供如
 ## 🛠 技术栈
 
 - **核心框架**: [Vue 3](https://v3.vuejs.org/) (Composition API)
-- **构建引擎**: [Vite](https://vitejs.dev/)
+- **构建引擎**: [Vue CLI 5](https://cli.vuejs.org/)
 - **状态管理**: Pinia (轻量化、类型安全)
-- **UI 体系**: Element Plus + Tailwind CSS (原子化 CSS 布局)
-- **流媒体引擎**: Shaka Player / Hls.js
+- **流媒体引擎**: Hls.js
 
 ## 📦 快速开始
 
@@ -44,7 +43,7 @@ VidSprout Web 端是面向桌面用户的核心展示平台，致力于提供如
 npm install
 
 # 启动开发服务器
-npm run dev
+npm run serve
 ```
 
 ### 3. 构建生产环境

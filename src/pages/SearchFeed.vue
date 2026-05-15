@@ -1,6 +1,6 @@
 <template>
   <div class="feed" ref="feedRef">
-    <div class="feed-item" v-for="(item, idx) in items" :key="idx" :ref="setItemRef" :data-idx="idx">
+    <div class="feed-item" v-for="(item, idx) in items" :key="item.id || idx" :ref="setItemRef" :data-idx="idx">
       <div class="player-card">
         <VideoPlayer v-if="item.type==='video'"
                      :src="displaySrc[idx] || item.src"
@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, onBeforeUpdate, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
 import VideoPlayer from '@/components/VideoPlayer.vue'
@@ -44,16 +44,19 @@ const feedRef = ref(null)
 const itemRefs = ref([])
 const currentIndex = ref(0)
 const commentsOpen = ref(false)
+const pageNo = ref(1)
+const hasNext = ref(true)
 const router = useRouter()
 const route = useRoute()
 let aborted = false
 let io
 
 function setItemRef(el) { if (el) itemRefs.value.push(el) }
+onBeforeUpdate(() => { itemRefs.value = [] })
 onBeforeUnmount(() => { aborted = true; itemRefs.value = []; if (io) { try { io.disconnect() } catch(_) { void 0 } } })
 
 function stride() { const el = feedRef.value; return el ? el.clientHeight : 0 }
-function clamp(i) { const max = Math.max(0, (itemRefs.value.length||1)-1); return Math.max(0, Math.min(max, i)) }
+function clamp(i) { const max = Math.max(0, items.value.length - 1); return Math.max(0, Math.min(max, i)) }
 function goTo(i, opts = {}) {
   const el = feedRef.value; if (!el) return
   const t = clamp(i); currentIndex.value = t
@@ -84,6 +87,8 @@ async function load(page=1) {
     if (aborted) return
     nextTick(() => { setupIO(); updatePreload(currentIndex.value) })
     if (aborted) return
+    pageNo.value = Number(res.page || page || 1)
+    hasNext.value = !!res.hasNext
   } catch (e) { /* no-op */ }
   finally { loading.value = false }
 }
@@ -92,7 +97,26 @@ function effectivePrefetchCount(){ return 2 }
 async function ensureItemSrc(i){ const idx=clamp(i); if(loaded.has(idx)) return; const it=items.value[idx]; if(!it) return; displaySrc.value[idx]=it.src; loaded.add(idx) }
 function updatePreload(center){ ensureItemSrc(center); for(let k=1;k<=effectivePrefetchCount();k++) ensureItemSrc(center+k) }
 function setupIO(){ if(!feedRef.value) return; if(io){try{io.disconnect()}catch(_){ void 0 }} io=new IntersectionObserver((entries)=>{ entries.forEach(e=>{ if(e.isIntersecting||e.intersectionRatio>0){ const idx=Number(e.target.dataset.idx||'0'); ensureItemSrc(idx) } }) }, { root: feedRef.value, rootMargin: '500px 0px', threshold: 0.01 }); itemRefs.value.forEach(el=>io.observe(el)) }
-function maybeLoadMore(idx){ /* 保持简单：一次性渲染搜索结果，暂不做滚动加载 */ }
+function maybeLoadMore(idx){ if(idx>=items.value.length-2 && hasNext.value && !loading.value) load(pageNo.value+1).then(()=>nextTick(()=>{setupIO();updatePreload(currentIndex.value)})) }
+
+async function resolveRouteTarget() {
+  const targetId = String(route.query.id || '').trim()
+  const targetIndex = Number(route.query.i || '0')
+  while (!aborted) {
+    if (targetId) {
+      const found = items.value.findIndex(x => String(x.id) === targetId)
+      if (found >= 0) return found
+    }
+    if (!Number.isNaN(targetIndex) && targetIndex < items.value.length) return targetIndex
+    if (!hasNext.value || loading.value) break
+    await load(pageNo.value + 1)
+  }
+  if (targetId) {
+    const found = items.value.findIndex(x => String(x.id) === targetId)
+    if (found >= 0) return found
+  }
+  return Number.isNaN(targetIndex) ? 0 : targetIndex
+}
 
 function onRequestNext(payload) {
   try {
@@ -102,8 +126,23 @@ function onRequestNext(payload) {
 function onRequestPrev() { try { goTo(currentIndex.value - 1) } catch (_) { /* no-op */ } }
 
 onMounted(() => {
-  const initIdx = Number(route.query.i || '0')
-  load(1).then(()=> nextTick(()=> goTo(isNaN(initIdx) ? 0 : initIdx)))
+  load(1).then(async () => {
+    const target = await resolveRouteTarget()
+    nextTick(() => goTo(target))
+  })
+})
+
+watch(() => route.query.q, () => {
+  currentIndex.value = 0
+  load(1).then(async () => {
+    const target = await resolveRouteTarget()
+    nextTick(() => goTo(target))
+  })
+})
+
+watch(() => route.query.i, (nv) => {
+  const idx = Number(nv || '0')
+  nextTick(() => goTo(isNaN(idx) ? 0 : idx))
 })
 </script>
 

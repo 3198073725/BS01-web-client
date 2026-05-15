@@ -37,6 +37,7 @@ export const useAuthStore = defineStore('auth', {
     },
     logoutLocal() {
       try { api.clearTokens() } catch (_) { /* no-op */ }
+      try { localStorage.setItem('rememberMe', '0') } catch (_) { /* no-op */ }
       this.user = null
       this.remember = false
     }
