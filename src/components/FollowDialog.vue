@@ -41,6 +41,7 @@
           </button>
         </div>
       </section>
+      <div class="empty" v-else-if="!loading && error">{{ errorMessage }}</div>
       <div class="empty" v-else-if="!loading">暂无数据</div>
       <div class="loading" v-if="loading">加载中...</div>
 
@@ -67,7 +68,7 @@ export default {
   },
   emits: ['close', 'changed'],
   setup(props, { emit }) {
-    const { tab, q, order, loading, items, hasNext, load, loadMore, toggleFollow } = useFollowList({ initialTab: props.initialTab, userId: props.userId })
+    const { tab, q, order, loading, error, items, hasNext, load, loadMore, toggleFollow } = useFollowList({ initialTab: props.initialTab, userId: props.userId })
 
     // keep reactive with prop
     watch(() => props.initialTab, (v) => { tab.value = v })
@@ -81,9 +82,10 @@ export default {
     function display(u) { return displayName(u) }
     function initial(u) { return initialFromUser(u) }
     async function onToggleFollow(u) { await toggleFollow(u); emit('changed', { tab: tab.value }); await load(true) }
+    const errorMessage = computed(() => String(error.value?.detail || error.value?.message || '加载失败，请稍后重试'))
 
     return {
-      tab, q, order, loading, items, hasNext,
+      tab, q, order, loading, error, errorMessage, items, hasNext,
       close, switchTab, onSearch, display, initial, loadMore, toggleFollow: onToggleFollow,
       followingCountDisplay: computed(() => props.followingCount),
       followersCountDisplay: computed(() => props.followersCount),
@@ -101,11 +103,14 @@ export default {
 .tab.active { color: var(--text); border-color: var(--accent); }
 .tab .count { opacity:.7; margin-left:4px; font-weight:500; }
 .close { background:transparent; border:none; color: var(--muted); font-size:18px; cursor:pointer; }
-.toolbar { display:flex; justify-content:space-between; align-items:center; padding: 10px 16px; }
+.toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding: 10px 16px; }
 .search { display:flex; gap:8px; align-items:center; width: 100%; }
-.search input { flex:1; padding:10px 14px; border:1px solid var(--border); border-radius:10px; background: var(--bg); color: var(--text); outline:none; }
-.search-btn { padding:8px 12px; border-radius:10px; border:1px solid var(--btn-border); background: var(--btn-bg); color: var(--text); cursor:pointer; }
-.sort select { padding:8px 10px; border-radius:10px; border:1px solid var(--btn-border); background: var(--bg); color: var(--text); cursor:pointer; }
+.search input,
+.search-btn,
+.sort select { height:44px; box-sizing:border-box; }
+.search input { flex:1; padding:0 14px; border:1px solid var(--border); border-radius:10px; background: var(--bg); color: var(--text); outline:none; }
+.search-btn { flex:0 0 auto; padding:0 18px; border-radius:10px; border:1px solid var(--btn-border); background: var(--btn-bg); color: var(--text); cursor:pointer; white-space:nowrap; }
+.sort select { min-width:140px; padding:0 14px; border-radius:10px; border:1px solid var(--btn-border); background: var(--bg); color: var(--text); cursor:pointer; }
 .list { padding: 6px 8px 10px 8px; overflow:auto; flex: 1; }
 .row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:12px; background: var(--bg-elev); border:1px solid var(--border); margin:8px; }
 .avatar { width:40px; height:40px; border-radius:999px; object-fit:cover; }

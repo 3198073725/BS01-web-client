@@ -7,6 +7,7 @@ export function useFollowList({ initialTab = 'following', userId = null } = {}) 
   const q = ref('')
   const order = ref('comprehensive') // comprehensive | latest | earliest
   const loading = ref(false)
+  const error = ref(null)
   const page = ref(1)
   const hasNext = ref(false)
   const items = ref([])
@@ -16,6 +17,7 @@ export function useFollowList({ initialTab = 'following', userId = null } = {}) 
   async function load(reset = true) {
     if (reset) { page.value = 1; items.value = [] }
     loading.value = true
+    error.value = null
     try {
       const fn = tab.value === 'following' ? api.followingQuery : api.followersQuery
       const data = await fn({ userId, page: page.value, q: q.value.trim(), order: order.value })
@@ -38,6 +40,10 @@ export function useFollowList({ initialTab = 'following', userId = null } = {}) 
         avatar_url: buildAvatarUrl(api.getBase(), u.profile_picture),
       }))
       items.value = reset ? mapped : items.value.concat(mapped)
+    } catch (e) {
+      error.value = e
+      hasNext.value = false
+      if (reset) items.value = []
     } finally {
       loading.value = false
     }
@@ -65,5 +71,5 @@ export function useFollowList({ initialTab = 'following', userId = null } = {}) 
     }
   }
 
-  return { tab, q, order, loading, items, hasNext, title, load, loadMore, toggleFollow }
+  return { tab, q, order, loading, error, items, hasNext, title, load, loadMore, toggleFollow }
 }

@@ -11,15 +11,15 @@
           <div v-else class="avatar-fallback-lg" @click="go('/me/works')">{{ userInitial }}</div>
           <div class="name" @click="go('/me/works')">{{ displayName }}</div>
           <div class="stats">
-            <span class="clickable" @click="openModal('following')">关注 {{ fmtNumber(user?.following_count) }}</span>
+            <span class="clickable" @click="openModal('following')">关注 {{ fmtNumber(topStats.following_count) }}</span>
             <i>|</i>
-            <span class="clickable" @click="openModal('followers')">粉丝 {{ fmtNumber(user?.followers_count) }}</span>
+            <span class="clickable" @click="openModal('followers')">粉丝 {{ fmtNumber(topStats.followers_count) }}</span>
           </div>
         </header>
         <section class="list">
           <Item icon="❤️" variant="heart" text="我的喜欢" :num="fmtNumber(stats?.likes_count)" @click="go('/me/likes')" />
           <Item icon="⭐" variant="star" text="我的收藏" :num="fmtNumber(stats?.favorites_count)" @click="go('/me/favorites')" />
-          <Item icon="🕒" variant="clock" text="观看历史" :num="'30天内'" @click="go('/me/history')" />
+          <Item icon="🕒" variant="clock" text="观看历史" :num="historyText" @click="go('/me/history')" />
           <Item icon="📌" variant="later" text="稍后再看" :num="fmtNumber(stats?.watch_later_count)" @click="go('/me/watch-later')" />
           <Item icon="🎬" variant="video" text="我的作品" :num="fmtNumber(stats?.my_works_count)" @click="go('/me/works')" />
         </section>
@@ -99,12 +99,20 @@ export default {
       return `${base}/${path}${bust}`
     })
     const stats = computed(() => data.value)
+    const topStats = computed(() => ({
+      following_count: Number(stats.value?.following_count ?? props.user?.following_count ?? 0),
+      followers_count: Number(stats.value?.followers_count ?? props.user?.followers_count ?? 0),
+    }))
+    const historyText = computed(() => {
+      if (stats.value && stats.value.history_count != null) return fmtNumber(stats.value.history_count)
+      return '30天内'
+    })
 
     function onEnter() {
       clearTimeout(hideTimer.value)
       showTimer.value = setTimeout(async () => {
         visible.value = true
-        if (props.user?.id) await load(props.user.id, false)
+        if (props.user?.id) await load(props.user.id, true)
       }, 300)
     }
     function onLeave() { delayHide() }
@@ -168,7 +176,7 @@ export default {
     })
 
     return { wrap, pop, visible, onEnter, onLeave, delayHide, cancelHide, onClickAvatar,
-             avatarUrl, avatarError, userInitial, displayName, stats, remember,
+             avatarUrl, avatarError, userInitial, displayName, stats, topStats, historyText, remember,
              fmtNumber, go, confirmLogout, toggleRemember, openModal,
              showLogoutConfirm, closeLogoutConfirm, doLogout }
   }
